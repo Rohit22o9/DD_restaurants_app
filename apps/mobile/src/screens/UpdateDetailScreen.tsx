@@ -124,7 +124,7 @@ export const UpdateDetailScreen: React.FC<UpdateDetailScreenProps> = ({ route, n
     setDownloadingId(att.id);
     setDownloadSuccess(null);
     try {
-      const downloadUrl = mobileApi.getAttachmentDownloadUrl(updateId, att.id);
+      const downloadUrl = await mobileApi.getAttachmentDownloadUrl(updateId, att.id);
       if (Platform.OS === 'web') {
         window.open(downloadUrl, '_blank');
       } else {

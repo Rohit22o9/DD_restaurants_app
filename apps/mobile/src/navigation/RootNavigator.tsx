@@ -42,32 +42,32 @@ function MainTabs({ user, restaurant, onLogout }: TabProps) {
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: any = 'home';
-          if (route.name === 'HomeTab') {
+          if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'UpdatesTab') {
+          } else if (route.name === 'Updates') {
             iconName = focused ? 'file-tray-full' : 'file-tray-full-outline';
-          } else if (route.name === 'ResponsesTab') {
+          } else if (route.name === 'Responses') {
             iconName = focused ? 'checkmark-done-circle' : 'checkmark-done-circle-outline';
-          } else if (route.name === 'ProfileTab') {
+          } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
           return <Ionicons name={iconName} size={20} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="HomeTab" options={{ tabBarLabel: 'Home' }}>
+      <Tab.Screen name="Home" options={{ tabBarLabel: 'Home' }}>
         {props => <DashboardScreen {...props} user={user} restaurant={restaurant} />}
       </Tab.Screen>
 
-      <Tab.Screen name="UpdatesTab" options={{ tabBarLabel: 'Updates' }}>
+      <Tab.Screen name="Updates" options={{ tabBarLabel: 'Updates' }}>
         {props => <UpdatesScreen {...props} />}
       </Tab.Screen>
 
-      <Tab.Screen name="ResponsesTab" options={{ tabBarLabel: 'Responses' }}>
+      <Tab.Screen name="Responses" options={{ tabBarLabel: 'Responses' }}>
         {props => <ResponsesScreen {...props} />}
       </Tab.Screen>
 
-      <Tab.Screen name="ProfileTab" options={{ tabBarLabel: 'Profile' }}>
+      <Tab.Screen name="Profile" options={{ tabBarLabel: 'Profile' }}>
         {props => <ProfileScreen {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>

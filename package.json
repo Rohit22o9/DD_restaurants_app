@@ -14,6 +14,7 @@
     "build:shared": "npm --workspace=packages/shared run build",
     "build:api": "npm --workspace=apps/api run build",
     "build:admin": "npm --workspace=apps/admin run build",
+    "build:mobile:apk": "cd apps/mobile && npx eas-cli build -p android --profile preview",
     "test:api": "npm --workspace=apps/api run test",
     "seed": "npm --workspace=apps/api run seed"
   },
@@ -25,5 +26,11 @@
     "typescript"
   ],
   "author": "Daily Drop Team",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  }
 }

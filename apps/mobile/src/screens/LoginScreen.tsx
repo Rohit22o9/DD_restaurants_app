@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
-import { mobileApi } from '../services/api';
+import { mobileApi, getBaseHost } from '../services/api';
 import { storage } from '../services/storage';
 
 interface LoginScreenProps {
@@ -21,11 +23,32 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('gulati@restaurant.dailydrop.com');
   const [password, setPassword] = useState('PartnerPass2026!');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [serverHost, setServerHost] = useState('');
+  const [customUrl, setCustomUrl] = useState('');
+  const [showServerConfig, setShowServerConfig] = useState(false);
+
+  useEffect(() => {
+    getBaseHost().then(h => {
+      setServerHost(h);
+      setCustomUrl(h);
+    });
+  }, []);
+
+  const handleSaveCustomUrl = async () => {
+    if (customUrl.trim()) {
+      await storage.setServerUrl(customUrl.trim());
+      setServerHost(customUrl.trim());
+      setShowServerConfig(false);
+      Alert.alert('Server Saved', `API Host updated to ${customUrl.trim()}`);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -60,7 +83,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, {
+        paddingTop: Math.max(insets.top, 24),
+        paddingBottom: Math.max(insets.bottom, 24),
+      }]}>
         <View style={styles.card}>
           {/* Logo & Header */}
           <View style={styles.logoWrap}>
@@ -150,6 +176,41 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 <Text style={styles.demoBtnText}>Bawarchi Biryani</Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Server Connection Info */}
+          <View style={styles.serverSection}>
+            <TouchableOpacity
+              onPress={() => setShowServerConfig(!showServerConfig)}
+              style={styles.serverBadge}
+            >
+              <Ionicons name="wifi-outline" size={13} color={COLORS.forest} />
+              <Text style={styles.serverBadgeText}>
+                API Host: {serverHost || 'Loading...'}
+              </Text>
+              <Ionicons name={showServerConfig ? 'chevron-up' : 'settings-outline'} size={12} color={COLORS.muted} />
+            </TouchableOpacity>
+
+            {showServerConfig && (
+              <View style={styles.serverEditWrap}>
+                <Text style={styles.serverEditLabel}>Backend Server URL (for physical device):</Text>
+                <View style={styles.serverInputRow}>
+                  <TextInput
+                    style={styles.serverInput}
+                    value={customUrl}
+                    onChangeText={setCustomUrl}
+                    placeholder="http://172.19.13.103:4000"
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity style={styles.serverSaveBtn} onPress={handleSaveCustomUrl}>
+                    <Text style={styles.serverSaveText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.serverHint}>
+                  Default Wi-Fi IP is http://172.19.13.103:4000
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -308,6 +369,74 @@ const styles = StyleSheet.create({
     color: COLORS.forest,
     fontWeight: '700',
   },
+  serverSection: {
+    marginTop: 14,
+    width: '100%',
+    alignItems: 'center',
+  },
+  serverBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.mintSubtle,
+    borderWidth: 1,
+    borderColor: COLORS.mintBorder,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+  },
+  serverBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.forest,
+  },
+  serverEditWrap: {
+    width: '100%',
+    backgroundColor: COLORS.mintSubtle,
+    borderWidth: 1,
+    borderColor: COLORS.mintBorder,
+    borderRadius: 14,
+    padding: 10,
+    marginTop: 8,
+  },
+  serverEditLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.muted,
+    marginBottom: 4,
+  },
+  serverInputRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  serverInput: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.mintBorder,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 11,
+    color: COLORS.dark,
+  },
+  serverSaveBtn: {
+    backgroundColor: COLORS.forest,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    justifyContent: 'center',
+  },
+  serverSaveText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  serverHint: {
+    fontSize: 9,
+    color: COLORS.muted,
+    marginTop: 4,
+  },
   footerHelp: {
     marginTop: 20,
     textAlign: 'center',
@@ -316,3 +445,4 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 });
+

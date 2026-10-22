@@ -70,7 +70,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" backgroundColor={COLORS.white} />
+      <StatusBar style="dark" />
       {!token || !user ? (
         <LoginScreen onLoginSuccess={handleLoginSuccess} />
       ) : (

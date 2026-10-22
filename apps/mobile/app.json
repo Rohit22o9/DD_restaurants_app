@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "Daily Drop Partner",
+    "name": "Daily Drop Restaurants",
     "slug": "daily-drop-partner",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/daily_drop_logo.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/daily_drop_logo.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FAFCF9"
+      "backgroundColor": "#204D39"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -19,14 +19,30 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/daily_drop_logo.png",
-        "backgroundColor": "#FAFCF9"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#204D39"
       },
       "package": "com.dailydrop.partner"
     },
     "web": {
-      "favicon": "./assets/daily_drop_logo.png",
+      "favicon": "./assets/favicon.png",
       "bundler": "metro"
+    },
+    "plugins": [
+      "expo-status-bar",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5cf8d1a6-14c8-4f39-8832-0da54281fded"
+      }
     }
   }
 }

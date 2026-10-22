@@ -30,4 +30,13 @@ export const storage = {
   async clearAuth() {
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY, RESTAURANT_KEY]);
   },
+
+  async getServerUrl(): Promise<string | null> {
+    return AsyncStorage.getItem('@dailydrop_server_url');
+  },
+
+  async setServerUrl(url: string) {
+    await AsyncStorage.setItem('@dailydrop_server_url', url);
+  },
 };
+

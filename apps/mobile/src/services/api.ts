@@ -1,13 +1,26 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { storage } from './storage';
 
-// In Android emulator, 10.0.2.2 maps to host machine's localhost
-export const DEFAULT_HOST = Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
-export const API_BASE = `${DEFAULT_HOST}/api/v1`;
+// Automatically detect host IP from Expo connection or fallback to machine LAN IP
+const debuggerHost = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoClient?.hostUri;
+export const DETECTED_LAN_IP = debuggerHost ? debuggerHost.split(':')[0] : '172.19.13.103';
+
+export const getBaseHost = async (): Promise<string> => {
+  const custom = await storage.getServerUrl();
+  if (custom && custom.trim()) {
+    return custom.trim().replace(/\/$/, '');
+  }
+  if (Platform.OS === 'web') {
+    return 'http://localhost:4000';
+  }
+  return `http://${DETECTED_LAN_IP}:4000`;
+};
 
 class MobileApi {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const token = await storage.getToken();
+    const baseHost = await getBaseHost();
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -18,7 +31,7 @@ class MobileApi {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const url = `${API_BASE}${endpoint}`;
+    const url = `${baseHost}/api/v1${endpoint}`;
     try {
       const response = await fetch(url, { ...options, headers });
       const data = await response.json().catch(() => ({}));
@@ -30,9 +43,10 @@ class MobileApi {
       return data;
     } catch (err: any) {
       console.warn(`[API Network Error] ${url}:`, err.message);
-      throw new Error(err.message || 'Unable to connect to Daily Drop operations server. Check your network.');
+      throw new Error(err.message || `Unable to connect to Daily Drop operations server at ${baseHost}. Please check network.`);
     }
   }
+
 
   // Auth
   async login(email: string, password: string) {
@@ -122,8 +136,9 @@ class MobileApi {
     });
   }
 
-  getAttachmentDownloadUrl(updateId: string, attachmentId: string) {
-    return `${API_BASE}/restaurant/updates/${updateId}/attachments/${attachmentId}/download`;
+  async getAttachmentDownloadUrl(updateId: string, attachmentId: string) {
+    const baseHost = await getBaseHost();
+    return `${baseHost}/api/v1/restaurant/updates/${updateId}/attachments/${attachmentId}/download`;
   }
 }
 
