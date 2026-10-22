@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:4000/api/v1';
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || 
+  (window.location.hostname === 'localhost' ? 'http://localhost:4000/api/v1' : 'https://dd-restaurants-app.onrender.com/api/v1');
 
 export class ApiError extends Error {
   constructor(public message: string, public status?: number) {
