@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+dist/
+build/
+*.db
+*.db-wal
+*.db-shm
+.env
+.DS_Store
+Thumbs.db
+uploads/attachments/*
+!uploads/attachments/.gitkeep

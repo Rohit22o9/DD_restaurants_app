@@ -1,0 +1,29 @@
+{
+  "name": "daily-drop-restaurant-partner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Daily Drop Restaurant Partner Management & Update Communication Platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace=apps/api run dev",
+    "dev:admin": "npm --workspace=apps/admin run dev",
+    "dev:mobile": "npm --workspace=apps/mobile run dev",
+    "build:shared": "npm --workspace=packages/shared run build",
+    "build:api": "npm --workspace=apps/api run build",
+    "build:admin": "npm --workspace=apps/admin run build",
+    "test:api": "npm --workspace=apps/api run test",
+    "seed": "npm --workspace=apps/api run seed"
+  },
+  "keywords": [
+    "daily-drop",
+    "restaurant-partner",
+    "react-native",
+    "express",
+    "typescript"
+  ],
+  "author": "Daily Drop Team",
+  "license": "UNLICENSED"
+}

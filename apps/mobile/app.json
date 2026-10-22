@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Daily Drop Partner",
+    "slug": "daily-drop-partner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/daily_drop_logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/daily_drop_logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FAFCF9"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/daily_drop_logo.png",
+        "backgroundColor": "#FAFCF9"
+      },
+      "package": "com.dailydrop.partner"
+    },
+    "web": {
+      "favicon": "./assets/daily_drop_logo.png",
+      "bundler": "metro"
+    }
+  }
+}
