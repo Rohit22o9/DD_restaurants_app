@@ -2,19 +2,26 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { storage } from './storage';
 
-// Automatically detect host IP from Expo connection or fallback to machine LAN IP
+export const PROD_API_HOST = 'https://dd-restaurants-app.onrender.com';
+
+// Automatically detect host IP from Expo connection or fallback to live Render production API
 const debuggerHost = Constants.expoConfig?.hostUri || (Constants as any).manifest2?.extra?.expoClient?.hostUri;
-export const DETECTED_LAN_IP = debuggerHost ? debuggerHost.split(':')[0] : '172.19.13.103';
+export const DETECTED_LAN_IP = debuggerHost ? debuggerHost.split(':')[0] : null;
 
 export const getBaseHost = async (): Promise<string> => {
   const custom = await storage.getServerUrl();
   if (custom && custom.trim()) {
     return custom.trim().replace(/\/$/, '');
   }
+  // In release standalone APK builds, always connect securely to live Render backend
+  if (!__DEV__) {
+    return PROD_API_HOST;
+  }
   if (Platform.OS === 'web') {
     return 'http://localhost:4000';
   }
-  return `http://${DETECTED_LAN_IP}:4000`;
+  // In local Expo Go development, connect to local PC if running, otherwise Render
+  return DETECTED_LAN_IP ? `http://${DETECTED_LAN_IP}:4000` : PROD_API_HOST;
 };
 
 class MobileApi {
