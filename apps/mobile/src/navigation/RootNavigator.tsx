@@ -6,10 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 
 // Screens
-import { DashboardScreen } from '../screens/DashboardScreen';
+import { LiveOrdersScreen } from '../screens/LiveOrdersScreen';
+import { MenuAvailabilityScreen } from '../screens/MenuAvailabilityScreen';
+import { EarningsScreen } from '../screens/EarningsScreen';
 import { UpdatesScreen } from '../screens/UpdatesScreen';
-import { ResponsesScreen } from '../screens/ResponsesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { DashboardScreen } from '../screens/DashboardScreen';
+import { ResponsesScreen } from '../screens/ResponsesScreen';
 import { UpdateDetailScreen } from '../screens/UpdateDetailScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 
@@ -25,6 +28,7 @@ interface TabProps {
 function MainTabs({ user, restaurant, onLogout }: TabProps) {
   return (
     <Tab.Navigator
+      initialRouteName="Orders"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: COLORS.forest,
@@ -41,13 +45,15 @@ function MainTabs({ user, restaurant, onLogout }: TabProps) {
           fontWeight: '700',
         },
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: any = 'home';
-          if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
+          let iconName: any = 'restaurant';
+          if (route.name === 'Orders') {
+            iconName = focused ? 'restaurant' : 'restaurant-outline';
+          } else if (route.name === 'Menu') {
+            iconName = focused ? 'fast-food' : 'fast-food-outline';
           } else if (route.name === 'Updates') {
-            iconName = focused ? 'file-tray-full' : 'file-tray-full-outline';
-          } else if (route.name === 'Responses') {
-            iconName = focused ? 'checkmark-done-circle' : 'checkmark-done-circle-outline';
+            iconName = focused ? 'megaphone' : 'megaphone-outline';
+          } else if (route.name === 'Payouts') {
+            iconName = focused ? 'wallet' : 'wallet-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
@@ -55,20 +61,24 @@ function MainTabs({ user, restaurant, onLogout }: TabProps) {
         },
       })}
     >
-      <Tab.Screen name="Home" options={{ tabBarLabel: 'Home' }}>
-        {props => <DashboardScreen {...props} user={user} restaurant={restaurant} />}
+      <Tab.Screen name="Orders" options={{ tabBarLabel: 'Orders' }}>
+        {(props) => <LiveOrdersScreen {...props} user={user} restaurant={restaurant} />}
+      </Tab.Screen>
+
+      <Tab.Screen name="Menu" options={{ tabBarLabel: 'Menu' }}>
+        {(props) => <MenuAvailabilityScreen {...props} user={user} restaurant={restaurant} />}
       </Tab.Screen>
 
       <Tab.Screen name="Updates" options={{ tabBarLabel: 'Updates' }}>
-        {props => <UpdatesScreen {...props} />}
+        {(props) => <UpdatesScreen {...props} />}
       </Tab.Screen>
 
-      <Tab.Screen name="Responses" options={{ tabBarLabel: 'Responses' }}>
-        {props => <ResponsesScreen {...props} />}
+      <Tab.Screen name="Payouts" options={{ tabBarLabel: 'Payouts' }}>
+        {(props) => <EarningsScreen {...props} user={user} restaurant={restaurant} />}
       </Tab.Screen>
 
       <Tab.Screen name="Profile" options={{ tabBarLabel: 'Profile' }}>
-        {props => <ProfileScreen {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
+        {(props) => <ProfileScreen {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>
   );
@@ -84,8 +94,14 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({ user, restaurant, 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <Stack.Screen name="MainTabs">
-        {props => <MainTabs {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
+        {(props) => <MainTabs {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
       </Stack.Screen>
+
+      <Stack.Screen name="Dashboard">
+        {(props) => <DashboardScreen {...props} user={user} restaurant={restaurant} />}
+      </Stack.Screen>
+
+      <Stack.Screen name="Responses" component={ResponsesScreen} />
 
       <Stack.Screen
         name="UpdateDetail"
@@ -93,10 +109,7 @@ export const RootNavigator: React.FC<RootNavigatorProps> = ({ user, restaurant, 
         options={{ animation: 'slide_from_bottom' }}
       />
 
-      <Stack.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-      />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
     </Stack.Navigator>
   );
 };

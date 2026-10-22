@@ -147,6 +147,60 @@ class MobileApi {
     const baseHost = await getBaseHost();
     return `${baseHost}/api/v1/restaurant/updates/${updateId}/attachments/${attachmentId}/download`;
   }
+
+  // ==========================================
+  // 1. LIVE ORDERS & KDS
+  // ==========================================
+  async getOrders(status?: string) {
+    const query = status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request<{ success: boolean; data: any[]; counts: { incoming: number; preparing: number; ready: number; dispatched: number; total: number } }>(
+      `/restaurant/orders${query}`
+    );
+  }
+
+  async updateOrderStatus(orderId: string, status: string, prepTimeMins?: number) {
+    return this.request<{ success: boolean; message: string; data: any }>(`/restaurant/orders/${orderId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, prepTimeMins }),
+    });
+  }
+
+  async verifyDispatchPin(orderId: string, pin: string) {
+    return this.request<{ success: boolean; message: string }>(`/restaurant/orders/${orderId}/verify-dispatch`, {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    });
+  }
+
+  // ==========================================
+  // 2. MENU 86ing & STOCK AVAILABILITY
+  // ==========================================
+  async getMenu() {
+    return this.request<{ success: boolean; data: any[] }>('/restaurant/menu');
+  }
+
+  async toggleMenuStock(itemId: string, isAvailable?: boolean) {
+    return this.request<{ success: boolean; message: string; data: any }>(`/restaurant/menu/${itemId}/toggle-stock`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isAvailable }),
+    });
+  }
+
+  // ==========================================
+  // 3. PAYOUTS & EARNINGS RECONCILIATION
+  // ==========================================
+  async getPayouts() {
+    return this.request<{
+      success: boolean;
+      data: any[];
+      summary: {
+        totalLifetimeNetEarnings: number;
+        currentPendingPayout: number;
+        bankAccountEnding: string;
+        payoutCycle: string;
+      };
+    }>('/restaurant/payouts');
+  }
 }
 
 export const mobileApi = new MobileApi();
