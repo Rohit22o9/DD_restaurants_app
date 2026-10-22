@@ -565,6 +565,243 @@ restaurantRouter.put('/profile', (req: AuthenticatedRequest, res) => {
   });
 });
 
+// ==========================================
+// LIVE ORDERS & KITCHEN DISPLAY SYSTEM (KDS)
+// ==========================================
+
+// GET /api/v1/restaurant/orders
+restaurantRouter.get('/orders', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const statusFilter = req.query.status as string;
+
+  let sql = `SELECT * FROM orders WHERE restaurant_id = ?`;
+  const params: any[] = [restaurantId];
+
+  if (statusFilter && statusFilter !== 'all') {
+    sql += ` AND status = ?`;
+    params.push(statusFilter);
+  }
+
+  sql += ` ORDER BY created_at DESC`;
+
+  const rows = db.query<any>(sql, params);
+  const formatted = rows.map(r => ({
+    id: r.id,
+    orderNumber: r.order_number,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    deliverySlot: r.delivery_slot,
+    status: r.status,
+    prepTimeMins: r.prep_time_mins,
+    items: JSON.parse(r.items_json || '[]'),
+    subtotal: r.subtotal,
+    tax: r.tax,
+    totalAmount: r.total_amount,
+    paymentMethod: r.payment_method,
+    specialInstructions: r.special_instructions,
+    riderName: r.rider_name,
+    riderPhone: r.rider_phone,
+    riderStatus: r.rider_status,
+    riderEtaMins: r.rider_eta_mins,
+    dispatchPin: r.dispatch_pin,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+
+  // Summary counts for tabs
+  const allOrders = db.query<any>(`SELECT status FROM orders WHERE restaurant_id = ?`, [restaurantId]);
+  const counts = {
+    incoming: allOrders.filter(o => o.status === 'incoming').length,
+    preparing: allOrders.filter(o => o.status === 'preparing').length,
+    ready: allOrders.filter(o => o.status === 'ready').length,
+    dispatched: allOrders.filter(o => o.status === 'dispatched').length,
+    total: allOrders.length,
+  };
+
+  res.json({
+    success: true,
+    data: formatted,
+    counts,
+  });
+});
+
+// PATCH /api/v1/restaurant/orders/:id/status
+restaurantRouter.patch('/orders/:id/status', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const { id } = req.params;
+  const { status, prepTimeMins } = req.body;
+
+  const validStatuses = ['incoming', 'preparing', 'ready', 'dispatched', 'delivered', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: `Invalid status: ${status}` });
+  }
+
+  const order = db.queryOne<any>(`SELECT * FROM orders WHERE id = ? AND restaurant_id = ?`, [id, restaurantId]);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  const now = new Date().toISOString();
+  db.run(
+    `UPDATE orders 
+     SET status = ?, 
+         prep_time_mins = COALESCE(?, prep_time_mins), 
+         rider_status = CASE 
+           WHEN ? = 'ready' THEN 'at_kitchen' 
+           WHEN ? = 'dispatched' THEN 'picked_up' 
+           ELSE rider_status 
+         END,
+         updated_at = ? 
+     WHERE id = ?`,
+    [status, prepTimeMins, status, status, now, id]
+  );
+
+  AuditService.log({
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    action: 'order_status_updated',
+    resourceType: 'order',
+    resourceId: id,
+    payload: { previousStatus: order.status, newStatus: status, orderNumber: order.order_number },
+  });
+
+  const updated = db.queryOne<any>(`SELECT * FROM orders WHERE id = ?`, [id]);
+  res.json({
+    success: true,
+    message: `Order ${updated.order_number} marked as ${status}`,
+    data: {
+      ...updated,
+      items: JSON.parse(updated.items_json || '[]')
+    }
+  });
+});
+
+// POST /api/v1/restaurant/orders/:id/verify-dispatch
+restaurantRouter.post('/orders/:id/verify-dispatch', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const { id } = req.params;
+  const { pin } = req.body;
+
+  const order = db.queryOne<any>(`SELECT * FROM orders WHERE id = ? AND restaurant_id = ?`, [id, restaurantId]);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  if (order.dispatch_pin && pin && order.dispatch_pin !== pin.trim()) {
+    return res.status(400).json({ error: 'Invalid Driver Dispatch PIN. Please check driver app.' });
+  }
+
+  const now = new Date().toISOString();
+  db.run(
+    `UPDATE orders SET status = 'dispatched', rider_status = 'picked_up', updated_at = ? WHERE id = ?`,
+    [now, id]
+  );
+
+  res.json({
+    success: true,
+    message: `Order ${order.order_number} successfully handed over to driver ${order.rider_name || ''}!`,
+  });
+});
+
+// ==========================================
+// MENU MANAGEMENT & 86ing (ITEM AVAILABILITY)
+// ==========================================
+
+// GET /api/v1/restaurant/menu
+restaurantRouter.get('/menu', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const items = db.query<any>(
+    `SELECT * FROM menu_items WHERE restaurant_id = ? ORDER BY category ASC, name ASC`,
+    [restaurantId]
+  );
+
+  const formatted = items.map(m => ({
+    id: m.id,
+    name: m.name,
+    category: m.category,
+    price: m.price,
+    isAvailable: Boolean(m.is_available),
+    dailyQuota: m.daily_quota,
+    remainingQuota: m.remaining_quota,
+  }));
+
+  res.json({
+    success: true,
+    data: formatted,
+  });
+});
+
+// PATCH /api/v1/restaurant/menu/:id/toggle-stock
+restaurantRouter.patch('/menu/:id/toggle-stock', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const { id } = req.params;
+  const { isAvailable } = req.body;
+
+  const item = db.queryOne<any>(`SELECT * FROM menu_items WHERE id = ? AND restaurant_id = ?`, [id, restaurantId]);
+  if (!item) {
+    return res.status(404).json({ error: 'Menu item not found' });
+  }
+
+  const newStatus = typeof isAvailable === 'boolean' ? (isAvailable ? 1 : 0) : (item.is_available ? 0 : 1);
+  const now = new Date().toISOString();
+
+  db.run(
+    `UPDATE menu_items SET is_available = ?, updated_at = ? WHERE id = ?`,
+    [newStatus, now, id]
+  );
+
+  res.json({
+    success: true,
+    message: `${item.name} is now ${newStatus ? 'AVAILABLE' : '86ed (OUT OF STOCK)'}`,
+    data: {
+      id: item.id,
+      name: item.name,
+      isAvailable: Boolean(newStatus),
+    }
+  });
+});
+
+// ==========================================
+// PAYOUTS & FINANCIAL RECONCILIATION
+// ==========================================
+
+// GET /api/v1/restaurant/payouts
+restaurantRouter.get('/payouts', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const rows = db.query<any>(
+    `SELECT * FROM payouts WHERE restaurant_id = ? ORDER BY period_end DESC`,
+    [restaurantId]
+  );
+
+  const formatted = rows.map(p => ({
+    id: p.id,
+    periodStart: p.period_start,
+    periodEnd: p.period_end,
+    totalOrders: p.total_orders,
+    grossAmount: p.gross_amount,
+    commissionRate: p.commission_rate,
+    commissionAmount: p.commission_amount,
+    packagingSubsidy: p.packaging_subsidy,
+    netPayout: p.net_payout,
+    status: p.status,
+    payoutDate: p.payout_date,
+  }));
+
+  const totalEarnings = rows.reduce((acc, p) => acc + p.net_payout, 0);
+  const pendingPayout = rows.filter(p => p.status === 'pending').reduce((acc, p) => acc + p.net_payout, 0);
+
+  res.json({
+    success: true,
+    data: formatted,
+    summary: {
+      totalLifetimeNetEarnings: totalEarnings,
+      currentPendingPayout: pendingPayout,
+      bankAccountEnding: '•••• 4821',
+      payoutCycle: 'Every Tuesday',
+    }
+  });
+});
+
 function formatUpdateCard(u: any) {
   return {
     id: u.id,

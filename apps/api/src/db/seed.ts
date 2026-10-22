@@ -275,6 +275,227 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
     ]
   );
 
+  // 7. Seed Live Pre-Orders for Kitchen Display System (KDS)
+  const gulatiId = seededRestaurants[0].id;
+  const bawarchiId = seededRestaurants[1].id;
+
+  const ordersData = [
+    {
+      id: 'order-dd-8491',
+      restaurant_id: gulatiId,
+      order_number: '#DD-8491',
+      customer_name: 'Vikram Malhotra',
+      customer_phone: '+91 98101 23456',
+      delivery_slot: 'Lunch Drop • 12:30 PM',
+      status: 'incoming',
+      prep_time_mins: 20,
+      items: [
+        { name: 'Murgh Makhani Thali', qty: 2, price: 320, dietary: 'Non-Veg', notes: 'Extra butter on top' },
+        { name: 'Garlic Butter Naan', qty: 4, price: 60, dietary: 'Veg' },
+        { name: 'Jeera Pulao', qty: 2, price: 140, dietary: 'Veg' }
+      ],
+      subtotal: 1160,
+      tax: 58,
+      total_amount: 1218,
+      special_instructions: 'Pack curries in thermal leakproof containers with green seal.',
+      rider_name: 'Aman Sharma',
+      rider_phone: '+91 98711 00223',
+      rider_status: 'arriving',
+      rider_eta_mins: 8,
+      dispatch_pin: '8491',
+    },
+    {
+      id: 'order-dd-8492',
+      restaurant_id: gulatiId,
+      order_number: '#DD-8492',
+      customer_name: 'Ananya Roy',
+      customer_phone: '+91 98200 33445',
+      delivery_slot: 'Lunch Drop • 12:45 PM',
+      status: 'preparing',
+      prep_time_mins: 15,
+      items: [
+        { name: 'Dal Makhani Executive Box', qty: 3, price: 230, dietary: 'Veg', notes: 'Less spicy gravy' },
+        { name: 'Lachha Paratha', qty: 6, price: 50, dietary: 'Veg' }
+      ],
+      subtotal: 990,
+      tax: 49.5,
+      total_amount: 1039.5,
+      special_instructions: 'Corporate desk delivery - include eco spoons and napkins.',
+      rider_name: 'Rajesh Kumar',
+      rider_phone: '+91 99112 44556',
+      rider_status: 'assigned',
+      rider_eta_mins: 14,
+      dispatch_pin: '8492',
+    },
+    {
+      id: 'order-dd-8493',
+      restaurant_id: gulatiId,
+      order_number: '#DD-8493',
+      customer_name: 'Karan Johar',
+      customer_phone: '+91 98330 66778',
+      delivery_slot: 'Lunch Drop • 01:00 PM',
+      status: 'ready',
+      prep_time_mins: 0,
+      items: [
+        { name: 'Tandoori Chicken Half', qty: 2, price: 380, dietary: 'Non-Veg' },
+        { name: 'Mint Chutney & Salad', qty: 2, price: 40, dietary: 'Veg' }
+      ],
+      subtotal: 840,
+      tax: 42,
+      total_amount: 882,
+      special_instructions: 'Box ready on dispatch counter. Tamper seal attached.',
+      rider_name: 'Sunil Verma',
+      rider_phone: '+91 98440 88990',
+      rider_status: 'at_kitchen',
+      rider_eta_mins: 2,
+      dispatch_pin: '8493',
+    },
+    {
+      id: 'order-dd-8488',
+      restaurant_id: gulatiId,
+      order_number: '#DD-8488',
+      customer_name: 'Rohit Mehta',
+      customer_phone: '+91 98111 77889',
+      delivery_slot: 'Morning Batch • 11:30 AM',
+      status: 'dispatched',
+      prep_time_mins: 0,
+      items: [
+        { name: 'Paneer Tikka Roll', qty: 4, price: 120, dietary: 'Veg' }
+      ],
+      subtotal: 480,
+      tax: 24,
+      total_amount: 504,
+      special_instructions: 'Handed to driver Aman.',
+      rider_name: 'Aman Sharma',
+      rider_phone: '+91 98711 00223',
+      rider_status: 'picked_up',
+      rider_eta_mins: 0,
+      dispatch_pin: '8488',
+    },
+    {
+      id: 'order-dd-8495',
+      restaurant_id: bawarchiId,
+      order_number: '#DD-8495',
+      customer_name: 'Siddharth Rao',
+      customer_phone: '+91 98480 99887',
+      delivery_slot: 'Lunch Drop • 12:30 PM',
+      status: 'incoming',
+      prep_time_mins: 25,
+      items: [
+        { name: 'Special Hyderabadi Mutton Biryani', qty: 2, price: 420, dietary: 'Non-Veg' },
+        { name: 'Mirchi Ka Salan & Raita', qty: 2, price: 50, dietary: 'Veg' }
+      ],
+      subtotal: 940,
+      tax: 47,
+      total_amount: 987,
+      special_instructions: 'Keep hot in insulated carrier bag.',
+      rider_name: 'Mohammed Ali',
+      rider_phone: '+91 98770 11223',
+      rider_status: 'arriving',
+      rider_eta_mins: 10,
+      dispatch_pin: '8495',
+    }
+  ];
+
+  for (const o of ordersData) {
+    db.run(
+      `INSERT OR REPLACE INTO orders (id, restaurant_id, order_number, customer_name, customer_phone, delivery_slot, status, prep_time_mins, items_json, subtotal, tax, total_amount, special_instructions, rider_name, rider_phone, rider_status, rider_eta_mins, dispatch_pin, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        o.id,
+        o.restaurant_id,
+        o.order_number,
+        o.customer_name,
+        o.customer_phone,
+        o.delivery_slot,
+        o.status,
+        o.prep_time_mins,
+        JSON.stringify(o.items),
+        o.subtotal,
+        o.tax,
+        o.total_amount,
+        o.special_instructions,
+        o.rider_name,
+        o.rider_phone,
+        o.rider_status,
+        o.rider_eta_mins,
+        o.dispatch_pin,
+        now,
+        now,
+      ]
+    );
+  }
+
+  // 8. Seed Menu Items for 86ing / Availability Control
+  const menuData = [
+    { id: 'menu-1', restoId: gulatiId, name: 'Murgh Makhani Thali', cat: 'Thali & Combos', price: 320, is_avail: 1, quota: 60, remaining: 42 },
+    { id: 'menu-2', restoId: gulatiId, name: 'Dal Makhani Executive Box', cat: 'Thali & Combos', price: 230, is_avail: 1, quota: 80, remaining: 55 },
+    { id: 'menu-3', restoId: gulatiId, name: 'Tandoori Chicken Half', cat: 'Tandoor & Starters', price: 380, is_avail: 1, quota: 30, remaining: 12 },
+    { id: 'menu-4', restoId: gulatiId, name: 'Shahi Paneer Thali', cat: 'Thali & Combos', price: 290, is_avail: 1, quota: 50, remaining: 35 },
+    { id: 'menu-5', restoId: gulatiId, name: 'Paneer Tikka Roll', cat: 'Wraps & Rolls', price: 120, is_avail: 1, quota: 40, remaining: 28 },
+    { id: 'menu-6', restoId: gulatiId, name: 'Garlic Butter Naan', cat: 'Breads', price: 60, is_avail: 1, quota: 150, remaining: 110 },
+    { id: 'menu-7', restoId: gulatiId, name: 'Kulfi Falooda Special', cat: 'Desserts', price: 140, is_avail: 0, quota: 25, remaining: 0 },
+  ];
+
+  for (const m of menuData) {
+    db.run(
+      `INSERT OR REPLACE INTO menu_items (id, restaurant_id, name, category, price, is_available, daily_quota, remaining_quota, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [m.id, m.restoId, m.name, m.cat, m.price, m.is_avail, m.quota, m.remaining, now, now]
+    );
+  }
+
+  // 9. Seed Weekly Payouts & Settlement Reconciliation
+  const payoutsData = [
+    {
+      id: 'payout-w43',
+      restoId: gulatiId,
+      start: '2026-10-16',
+      end: '2026-10-22',
+      orders: 76,
+      gross: 38450,
+      comm: 5767.5,
+      subsidy: 1140,
+      net: 33822.5,
+      status: 'pending',
+      date: '2026-10-24',
+    },
+    {
+      id: 'payout-w42',
+      restoId: gulatiId,
+      start: '2026-10-09',
+      end: '2026-10-15',
+      orders: 112,
+      gross: 54200,
+      comm: 8130,
+      subsidy: 1680,
+      net: 47750,
+      status: 'paid',
+      date: '2026-10-17',
+    },
+    {
+      id: 'payout-w41',
+      restoId: gulatiId,
+      start: '2026-10-02',
+      end: '2026-10-08',
+      orders: 98,
+      gross: 48900,
+      comm: 7335,
+      subsidy: 1470,
+      net: 43035,
+      status: 'paid',
+      date: '2026-10-10',
+    }
+  ];
+
+  for (const p of payoutsData) {
+    db.run(
+      `INSERT OR REPLACE INTO payouts (id, restaurant_id, period_start, period_end, total_orders, gross_amount, commission_rate, commission_amount, packaging_subsidy, net_payout, status, payout_date, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0.15, ?, ?, ?, ?, ?, ?)`,
+      [p.id, p.restoId, p.start, p.end, p.orders, p.gross, p.comm, p.subsidy, p.net, p.status, p.date, now]
+    );
+  }
+
   console.log('[SEED] Database seeding completed successfully!');
   console.log('--- DEFAULT CREDENTIALS ---');
   console.log('Admin Account:      admin@dailydrop.com / DailyDropAdmin2026!');

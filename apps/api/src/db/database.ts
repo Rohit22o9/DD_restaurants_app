@@ -181,6 +181,62 @@ class DatabaseService {
         sent_at TEXT NOT NULL
       );
 
+      -- Live Orders Table (KDS & Order Flow)
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+        order_number TEXT NOT NULL,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT,
+        delivery_slot TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'incoming' CHECK(status IN ('incoming', 'preparing', 'ready', 'dispatched', 'delivered', 'cancelled')),
+        prep_time_mins INTEGER DEFAULT 20,
+        items_json TEXT NOT NULL,
+        subtotal REAL NOT NULL,
+        tax REAL NOT NULL,
+        total_amount REAL NOT NULL,
+        payment_method TEXT DEFAULT 'prepaid',
+        special_instructions TEXT,
+        rider_name TEXT,
+        rider_phone TEXT,
+        rider_status TEXT DEFAULT 'assigned',
+        rider_eta_mins INTEGER DEFAULT 12,
+        dispatch_pin TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      -- Menu Items Table (86ing & Item Availability)
+      CREATE TABLE IF NOT EXISTS menu_items (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        price REAL NOT NULL,
+        is_available INTEGER NOT NULL DEFAULT 1,
+        daily_quota INTEGER DEFAULT 50,
+        remaining_quota INTEGER DEFAULT 50,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      -- Restaurant Weekly Payouts Table
+      CREATE TABLE IF NOT EXISTS payouts (
+        id TEXT PRIMARY KEY,
+        restaurant_id TEXT NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        total_orders INTEGER NOT NULL,
+        gross_amount REAL NOT NULL,
+        commission_rate REAL NOT NULL DEFAULT 0.15,
+        commission_amount REAL NOT NULL,
+        packaging_subsidy REAL NOT NULL DEFAULT 0,
+        net_payout REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'paid' CHECK(status IN ('pending', 'processing', 'paid')),
+        payout_date TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
       -- Indices for Performance
       CREATE INDEX IF NOT EXISTS idx_update_recipients_update ON update_recipients(update_id);
       CREATE INDEX IF NOT EXISTS idx_update_recipients_restaurant ON update_recipients(restaurant_id);
@@ -189,6 +245,9 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_responses_restaurant ON restaurant_responses(restaurant_id);
       CREATE INDEX IF NOT EXISTS idx_notifications_restaurant ON in_app_notifications(restaurant_id, is_read);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_events(created_at);
+      CREATE INDEX IF NOT EXISTS idx_orders_restaurant_status ON orders(restaurant_id, status);
+      CREATE INDEX IF NOT EXISTS idx_menu_restaurant ON menu_items(restaurant_id);
+      CREATE INDEX IF NOT EXISTS idx_payouts_restaurant ON payouts(restaurant_id);
     `);
   }
 
