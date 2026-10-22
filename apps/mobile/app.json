@@ -15,8 +15,7 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.dailydrop.partner"
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
