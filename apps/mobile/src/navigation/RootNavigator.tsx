@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 
@@ -15,6 +16,7 @@ import { DashboardScreen } from '../screens/DashboardScreen';
 import { ResponsesScreen } from '../screens/ResponsesScreen';
 import { UpdateDetailScreen } from '../screens/UpdateDetailScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { LiveAlertBanner } from '../components/LiveAlertBanner';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -22,10 +24,11 @@ const Stack = createNativeStackNavigator();
 interface TabProps {
   user: any;
   restaurant: any;
+  unreadCount: number;
   onLogout: () => void;
 }
 
-function MainTabs({ user, restaurant, onLogout }: TabProps) {
+function MainTabs({ user, restaurant, unreadCount, onLogout }: TabProps) {
   return (
     <Tab.Navigator
       initialRouteName="Orders"
@@ -69,7 +72,19 @@ function MainTabs({ user, restaurant, onLogout }: TabProps) {
         {(props) => <MenuAvailabilityScreen {...props} user={user} restaurant={restaurant} />}
       </Tab.Screen>
 
-      <Tab.Screen name="Updates" options={{ tabBarLabel: 'Updates' }}>
+      <Tab.Screen
+        name="Updates"
+        options={{
+          tabBarLabel: 'Updates',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#DC2626',
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '800',
+          },
+        }}
+      >
         {(props) => <UpdatesScreen {...props} />}
       </Tab.Screen>
 
@@ -91,25 +106,43 @@ interface RootNavigatorProps {
 }
 
 export const RootNavigator: React.FC<RootNavigatorProps> = ({ user, restaurant, onLogout }) => {
+  const navigation = useNavigation<any>();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const navRef = useRef(navigation);
+  navRef.current = navigation;
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-      <Stack.Screen name="MainTabs">
-        {(props) => <MainTabs {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
-      </Stack.Screen>
+    <View style={{ flex: 1 }}>
+      {/* Global Real-Time Alert Banner (Pops down immediately on any screen when new update arrives) */}
+      <LiveAlertBanner navigationRef={navRef} onUnreadCountChange={setUnreadCount} />
 
-      <Stack.Screen name="Dashboard">
-        {(props) => <DashboardScreen {...props} user={user} restaurant={restaurant} />}
-      </Stack.Screen>
+      <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+        <Stack.Screen name="MainTabs">
+          {(props) => (
+            <MainTabs
+              {...props}
+              user={user}
+              restaurant={restaurant}
+              unreadCount={unreadCount}
+              onLogout={onLogout}
+            />
+          )}
+        </Stack.Screen>
 
-      <Stack.Screen name="Responses" component={ResponsesScreen} />
+        <Stack.Screen name="Dashboard">
+          {(props) => <DashboardScreen {...props} user={user} restaurant={restaurant} />}
+        </Stack.Screen>
 
-      <Stack.Screen
-        name="UpdateDetail"
-        component={UpdateDetailScreen}
-        options={{ animation: 'slide_from_bottom' }}
-      />
+        <Stack.Screen name="Responses" component={ResponsesScreen} />
 
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
-    </Stack.Navigator>
+        <Stack.Screen
+          name="UpdateDetail"
+          component={UpdateDetailScreen}
+          options={{ animation: 'slide_from_bottom' }}
+        />
+
+        <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      </Stack.Navigator>
+    </View>
   );
 };

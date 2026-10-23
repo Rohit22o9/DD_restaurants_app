@@ -38,9 +38,9 @@ export const UpdatesScreen: React.FC<UpdatesScreenProps> = ({ navigation, route 
     { id: 'overdue', label: 'Overdue' },
   ];
 
-  const fetchUpdates = async () => {
+  const fetchUpdates = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await mobileApi.getUpdates({ filter, sort, search });
       setUpdates(res.data);
     } catch (err: any) {
@@ -52,12 +52,17 @@ export const UpdatesScreen: React.FC<UpdatesScreenProps> = ({ navigation, route 
   };
 
   useEffect(() => {
-    fetchUpdates();
+    fetchUpdates(false);
+    // Auto-poll every 5 seconds for real-time live updates
+    const interval = setInterval(() => {
+      fetchUpdates(true);
+    }, 5000);
+    return () => clearInterval(interval);
   }, [filter, sort, search]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchUpdates();
+    fetchUpdates(false);
   }, [filter, sort, search]);
 
   return (
