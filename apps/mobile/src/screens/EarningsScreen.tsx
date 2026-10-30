@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { mobileApi } from '../services/api';
+import { formatAUD } from '../utils/perthTime';
 
 interface EarningsScreenProps {
   navigation: any;
@@ -73,9 +74,9 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View>
-              <Text style={styles.heroLabel}>LIFETIME NET SETTLED</Text>
+              <Text style={styles.heroLabel}>LIFETIME NET SETTLED (AUD)</Text>
               <Text style={styles.heroAmount}>
-                ₹{summary?.totalLifetimeNetEarnings?.toLocaleString('en-IN') || '1,24,650'}
+                {formatAUD(summary?.totalLifetimeNetEarnings || 124650)}
               </Text>
             </View>
             <View style={styles.bankPill}>
@@ -90,12 +91,12 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
             <View>
               <Text style={styles.pendingLabel}>Upcoming Transfer (Processing)</Text>
               <Text style={styles.pendingAmount}>
-                ₹{summary?.currentPendingPayout?.toLocaleString('en-IN') || '18,650'}
+                {formatAUD(summary?.currentPendingPayout || 18650)}
               </Text>
             </View>
             <View style={styles.cycleBadge}>
               <Ionicons name="calendar-outline" size={12} color="#FEF3C7" />
-              <Text style={styles.cycleText}>Cycle: Every Tuesday</Text>
+              <Text style={styles.cycleText}>Cycle: Every Tuesday (AWST)</Text>
             </View>
           </View>
         </View>
@@ -104,7 +105,7 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
         <View style={styles.infoCallout}>
           <Ionicons name="shield-checkmark" size={18} color="#059669" />
           <Text style={styles.infoCalloutText}>
-            Payouts are credited directly via NEFT/IMPS every Tuesday by 11:00 AM with 100% itemized transparency.
+            Payouts are credited directly via Australian Direct Entry / PayID every Tuesday by 11:00 AM AWST with 100% itemized transparency.
           </Text>
         </View>
 
@@ -153,7 +154,7 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
                 <View style={styles.breakdownBox}>
                   <View style={styles.breakdownRow}>
                     <Text style={styles.breakdownLabel}>Gross Food Sales</Text>
-                    <Text style={styles.breakdownVal}>₹{payout.grossAmount?.toLocaleString('en-IN')}</Text>
+                    <Text style={styles.breakdownVal}>{formatAUD(payout.grossAmount)}</Text>
                   </View>
 
                   <View style={styles.breakdownRow}>
@@ -161,7 +162,7 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
                       Daily Drop Fee ({payout.commissionRate * 100}%)
                     </Text>
                     <Text style={[styles.breakdownVal, { color: '#DC2626' }]}>
-                      -₹{payout.commissionAmount?.toLocaleString('en-IN')}
+                      -{formatAUD(payout.commissionAmount)}
                     </Text>
                   </View>
 
@@ -169,14 +170,14 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
                     <View style={styles.breakdownRow}>
                       <Text style={styles.breakdownLabel}>Packaging Subsidy</Text>
                       <Text style={[styles.breakdownVal, { color: '#059669' }]}>
-                        +₹{payout.packagingSubsidy?.toLocaleString('en-IN')}
+                        +{formatAUD(payout.packagingSubsidy)}
                       </Text>
                     </View>
                   )}
 
                   <View style={styles.netRow}>
                     <Text style={styles.netLabel}>Net Bank Deposit</Text>
-                    <Text style={styles.netVal}>₹{payout.netPayout?.toLocaleString('en-IN')}</Text>
+                    <Text style={styles.netVal}>{formatAUD(payout.netPayout)}</Text>
                   </View>
                 </View>
 

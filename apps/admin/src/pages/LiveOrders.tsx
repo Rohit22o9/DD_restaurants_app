@@ -297,7 +297,7 @@ export const LiveOrders: React.FC = () => {
                           ))}
                         </div>
                         <div className="font-extrabold text-brand-dark mt-1 text-[11px]">
-                          ₹{(Number(o.totalAmount) || 0).toFixed(0)} • {o.items?.length || 0} items
+                          ${(Number(o.totalAmount) || 0).toFixed(2)} • {o.items?.length || 0} items
                         </div>
                       </td>
 

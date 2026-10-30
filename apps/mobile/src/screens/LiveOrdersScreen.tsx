@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { mobileApi } from '../services/api';
 import { storage } from '../services/storage';
+import { formatAUD, formatPerthTime, formatPerthDate } from '../utils/perthTime';
 
 interface LiveOrdersScreenProps {
   navigation: any;
@@ -89,7 +90,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
           setDriverPickupBanner({
             orderNumber: o.orderNumber,
             riderName: o.riderName || 'Assigned Driver',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: formatPerthTime(new Date(), true),
           });
           Vibration.vibrate([0, 250, 150, 250]);
           setTimeout(() => setDriverPickupBanner(null), 8000);
@@ -168,7 +169,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
       setDriverPickupBanner({
         orderNumber: targetOrder?.orderNumber || '#DD',
         riderName: driverName || targetOrder?.riderName || 'Driver',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: formatPerthTime(new Date(), true),
       });
       Vibration.vibrate([0, 200, 100, 200]);
       setTimeout(() => setDriverPickupBanner(null), 8000);
@@ -340,9 +341,9 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
             <Ionicons name="time" size={16} color="#FFFFFF" />
           </View>
           <View>
-            <Text style={styles.scheduleLabel}>NEXT DRIVER HANDOVER</Text>
+            <Text style={styles.scheduleLabel}>NEXT DRIVER HANDOVER (PERTH AWST)</Text>
             <Text style={styles.scheduleTimeText}>
-              {totalActiveCount > 0 ? `${earliestCutoff} Cutoff` : 'All Active Orders Dispatched'}
+              {totalActiveCount > 0 ? `${earliestCutoff} AWST Cutoff` : 'All Active Orders Dispatched'}
             </Text>
           </View>
         </View>
@@ -607,7 +608,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                           <Text style={styles.itemName}>{item.name}</Text>
                           {item.portion && <Text style={styles.itemPortion}>{item.portion}</Text>}
                         </View>
-                        <Text style={styles.itemPrice}>₹{(price * qty).toFixed(0)}</Text>
+                        <Text style={styles.itemPrice}>{formatAUD(price * qty)}</Text>
                       </View>
                     );
                   })}
@@ -656,7 +657,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                 <View style={styles.cardFooter}>
                   <View style={styles.amountWrap}>
                     <Text style={styles.amountLabel}>Total Bill</Text>
-                    <Text style={styles.amountVal}>₹{(Number(order.totalAmount) || 0).toFixed(0)}</Text>
+                    <Text style={styles.amountVal}>{formatAUD(order.totalAmount)}</Text>
                   </View>
 
                   {/* Incoming: 1-Click Accept */}
@@ -794,7 +795,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
               <View style={styles.ackAmountBadge}>
                 <Text style={styles.ackAmountLabel}>BILL TOTAL</Text>
                 <Text style={styles.ackAmountValue}>
-                  ₹{(Number(ackModalOrder?.totalAmount) || 0).toFixed(0)}
+                  {formatAUD(ackModalOrder?.totalAmount)}
                 </Text>
               </View>
             </View>
@@ -817,7 +818,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                         <Text style={styles.ackItemName}>{item.name}</Text>
                         {item.portion && <Text style={styles.ackItemPortion}>{item.portion}</Text>}
                       </View>
-                      <Text style={styles.ackItemPrice}>₹{(price * qty).toFixed(0)}</Text>
+                      <Text style={styles.ackItemPrice}>{formatAUD(price * qty)}</Text>
                     </View>
                   );
                 })}

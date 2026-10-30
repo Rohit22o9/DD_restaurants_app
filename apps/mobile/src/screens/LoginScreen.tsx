@@ -35,6 +35,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [showServerConfig, setShowServerConfig] = useState(false);
 
   useEffect(() => {
+    mobileApi.pingHealth();
     getBaseHost().then(h => {
       setServerHost(h);
       setCustomUrl(h);
@@ -152,7 +153,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               activeOpacity={0.8}
             >
               {loading ? (
-                <ActivityIndicator color={COLORS.white} size="small" />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                  <Text style={styles.loginBtnText}>Connecting to Daily Drop Cloud...</Text>
+                </View>
               ) : (
                 <Text style={styles.loginBtnText}>Sign In to Kitchen Dashboard</Text>
               )}

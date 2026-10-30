@@ -283,7 +283,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                       <td className="py-3 px-3">
                         <div className="font-medium text-brand-dark">{o.customerName}</div>
                         <div className="text-[10px] font-bold text-brand-forest">
-                          ₹{(Number(o.totalAmount) || 0).toFixed(0)} ({o.itemsCount} items)
+                          ${(Number(o.totalAmount) || 0).toFixed(2)} ({o.itemsCount} items)
                         </div>
                       </td>
                       <td className="py-3 px-3">

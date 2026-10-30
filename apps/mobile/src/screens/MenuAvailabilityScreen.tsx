@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { mobileApi } from '../services/api';
+import { formatAUD } from '../utils/perthTime';
 
 interface MenuAvailabilityScreenProps {
   navigation: any;
@@ -215,7 +216,7 @@ export const MenuAvailabilityScreen: React.FC<MenuAvailabilityScreenProps> = () 
                   <View style={styles.metaRow}>
                     <Text style={styles.dishCategory}>{item.category || 'General'}</Text>
                     <Text style={styles.metaDot}>•</Text>
-                    <Text style={styles.dishPrice}>₹{item.price}</Text>
+                    <Text style={styles.dishPrice}>{formatAUD(item.price)}</Text>
                     {item.dailyQuota ? (
                       <>
                         <Text style={styles.metaDot}>•</Text>

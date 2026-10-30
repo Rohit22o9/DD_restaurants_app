@@ -39,19 +39,71 @@ class MobileApi {
     }
 
     const url = `${baseHost}/api/v1${endpoint}`;
-    try {
-      const response = await fetch(url, { ...options, headers });
-      const data = await response.json().catch(() => ({}));
+    const isLoginOrGet = endpoint === '/auth/login' || !options.method || options.method === 'GET';
+    const maxRetries = isLoginOrGet ? 3 : 1;
+    let lastError: any = null;
 
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP ${response.status}: Request failed`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeoutId = controller ? setTimeout(() => controller.abort(), 35000) : null;
+
+        const response = await fetch(url, {
+          ...options,
+          headers,
+          signal: controller?.signal,
+        });
+
+        if (timeoutId) clearTimeout(timeoutId);
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data.error || `HTTP ${response.status}: Request failed`);
+        }
+
+        return data;
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = String(err?.message || '');
+        const isConnectErr =
+          err?.name === 'AbortError' ||
+          errMsg.includes('ConnectException') ||
+          errMsg.includes('Failed to connect') ||
+          errMsg.includes('Network request failed') ||
+          errMsg.includes('fetch failed') ||
+          errMsg.includes('timeout');
+
+        if (isConnectErr && attempt < maxRetries) {
+          // Render free cloud instances spin down after 15 min idle; auto-retry while container boots
+          console.log(`[API Connection Attempt ${attempt}/${maxRetries}] Server waking up, retrying in ${attempt * 3}s...`);
+          await new Promise((resolve) => setTimeout(resolve, attempt * 3000));
+          continue;
+        }
+        break;
       }
-
-      return data;
-    } catch (err: any) {
-      console.warn(`[API Network Error] ${url}:`, err.message);
-      throw new Error(err.message || `Unable to connect to Daily Drop operations server at ${baseHost}. Please check network.`);
     }
+
+    const rawMessage = lastError?.message || '';
+    if (
+      rawMessage.includes('ConnectException') ||
+      rawMessage.includes('Failed to connect') ||
+      rawMessage.includes('Network request failed')
+    ) {
+      throw new Error(
+        'Daily Drop Cloud server was sleeping and is now starting up. Please tap "Sign In" again in 10 seconds.'
+      );
+    }
+
+    throw new Error(rawMessage || `Unable to reach Daily Drop server at ${baseHost}. Please verify internet.`);
+  }
+
+  // Pre-warm Render server when app opens so cold starts are absorbed
+  async pingHealth() {
+    try {
+      const baseHost = await getBaseHost();
+      fetch(`${baseHost}/api/health`).catch(() => null);
+    } catch (e) {}
   }
 
 
