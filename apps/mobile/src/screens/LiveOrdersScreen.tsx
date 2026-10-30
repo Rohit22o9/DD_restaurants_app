@@ -246,6 +246,12 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
 
   const totalActiveCount = counts.incoming + counts.preparing + counts.ready;
 
+  // Earliest cutoff for the active orders summary
+  const pendingOrders = orders.filter((o) => o.status === 'incoming' || o.status === 'preparing' || o.status === 'ready');
+  const earliestCutoff = pendingOrders.length > 0 && pendingOrders[0].handoverTime
+    ? pendingOrders[0].handoverTime
+    : '12:15 PM';
+
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
       {/* Real-time Driver Pickup Toast Notification Banner */}
@@ -268,127 +274,174 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         </View>
       )}
 
-      {/* Top Header Bar with Prominent LOGOUT Button & Restaurant Name */}
+      {/* Top Header Bar with Restaurant Identity, Controls & Clean Hierarchy */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.liveIndicatorRow}>
+        {/* Top Meta Row: Restaurant Identity on left, Controls on right */}
+        <View style={styles.headerTopRow}>
+          <View style={styles.restoBadgeContainer}>
             <View style={styles.pulseDot} />
             <Text style={styles.liveBadgeText}>LIVE KDS</Text>
-            <Text style={styles.restoBadgeText}>• {restaurant?.name || 'Gulati Restaurant'}</Text>
+            <Text style={styles.restoBadgeText} numberOfLines={1} ellipsizeMode="tail">
+              • {restaurant?.name || 'Kitchen Partner'}
+            </Text>
           </View>
-          <Text style={styles.headerTitle}>Kitchen Orders</Text>
+
+          <View style={styles.headerActions}>
+            {/* Sound Alert Toggle */}
+            <TouchableOpacity
+              style={[styles.audioToggleBtn, soundAlertEnabled && styles.audioToggleActive]}
+              onPress={() => {
+                setSoundAlertEnabled(!soundAlertEnabled);
+                if (!soundAlertEnabled) {
+                  Vibration.vibrate(150);
+                }
+              }}
+              activeOpacity={0.8}
+              accessibilityLabel="Toggle Sound"
+            >
+              <Ionicons
+                name={soundAlertEnabled ? 'volume-high' : 'volume-mute'}
+                size={14}
+                color={soundAlertEnabled ? '#FFFFFF' : '#475569'}
+              />
+              <Text style={[styles.audioToggleText, soundAlertEnabled && styles.audioToggleTextActive]}>
+                {soundAlertEnabled ? 'Sound ON' : 'Muted'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Prominent Log Out Button */}
+            <TouchableOpacity
+              style={styles.headerLogoutBtn}
+              onPress={handleLogoutConfirm}
+              activeOpacity={0.8}
+              accessibilityLabel="Sign out"
+            >
+              <Ionicons name="log-out-outline" size={14} color="#DC2626" />
+              <Text style={styles.headerLogoutText}>Log Out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.headerRight}>
-          {/* Sound Alert Toggle */}
-          <TouchableOpacity
-            style={[styles.audioToggleBtn, soundAlertEnabled && styles.audioToggleActive]}
-            onPress={() => {
-              setSoundAlertEnabled(!soundAlertEnabled);
-              if (!soundAlertEnabled) {
-                Vibration.vibrate(200);
-              }
-            }}
-            activeOpacity={0.8}
-            accessibilityLabel="Toggle Sound"
-          >
-            <Ionicons
-              name={soundAlertEnabled ? 'volume-high' : 'volume-mute'}
-              size={16}
-              color={soundAlertEnabled ? COLORS.white : COLORS.muted}
-            />
-            <Text style={[styles.audioToggleText, soundAlertEnabled && styles.audioToggleTextActive]}>
-              {soundAlertEnabled ? 'Sound ON' : 'Muted'}
+        {/* Title Row: Bold Title + Live Status Indicator */}
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerTitle}>Kitchen Orders</Text>
+          <View style={styles.headerSubBadge}>
+            <Text style={styles.headerSubBadgeText}>
+              {totalActiveCount} Active • Auto-Sync
             </Text>
-          </TouchableOpacity>
-
-          {/* Prominent Log Out Button */}
-          <TouchableOpacity
-            style={styles.headerLogoutBtn}
-            onPress={handleLogoutConfirm}
-            activeOpacity={0.8}
-            accessibilityLabel="Sign out"
-          >
-            <Ionicons name="log-out-outline" size={16} color="#DC2626" />
-            <Text style={styles.headerLogoutText}>Log Out</Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* Prominent Handover Schedule Banner (Active orders against handover cutoff) */}
-      <View style={styles.scheduleHeaderBar}>
-        <View style={styles.scheduleHeaderBarLeft}>
-          <Ionicons name="time" size={18} color="#991B1B" />
-          <Text style={styles.scheduleHeaderTitle}>DELIVERY HANDOVER SCHEDULE</Text>
+      {/* Modern Handover Schedule Card */}
+      <View style={styles.scheduleCard}>
+        <View style={styles.scheduleLeft}>
+          <View style={styles.scheduleIconWrap}>
+            <Ionicons name="time" size={16} color="#FFFFFF" />
+          </View>
+          <View>
+            <Text style={styles.scheduleLabel}>NEXT DRIVER HANDOVER</Text>
+            <Text style={styles.scheduleTimeText}>
+              {totalActiveCount > 0 ? `${earliestCutoff} Cutoff` : 'All Active Orders Dispatched'}
+            </Text>
+          </View>
         </View>
-        <View style={styles.scheduleHeaderCountBadge}>
-          <Text style={styles.scheduleHeaderCountText}>
-            {totalActiveCount} Active {totalActiveCount === 1 ? 'Order' : 'Orders'} Today
+        <View style={styles.scheduleCountPill}>
+          <Text style={styles.scheduleCountPillText}>
+            {totalActiveCount} Active Today
           </Text>
         </View>
       </View>
 
-      {/* Pipeline Status Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'all_active' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('all_active')}
+      {/* Scrollable Pipeline Status Tabs (Pill Style, Zero Clipping) */}
+      <View style={styles.tabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsScrollContent}
         >
-          <Text style={[styles.tabLabel, activeTab === 'all_active' && styles.tabLabelActive]}>All Active</Text>
-          {totalActiveCount > 0 && (
-            <View style={[styles.tabBadge, activeTab === 'all_active' ? styles.tabBadgeActiveTotal : styles.tabBadgeInactive]}>
-              <Text style={styles.tabBadgeText}>{totalActiveCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          {/* All Active Tab */}
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'all_active' && styles.tabPillActive]}
+            onPress={() => setActiveTab('all_active')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'all_active' && styles.tabPillTextActive]}>
+              All Active
+            </Text>
+            {totalActiveCount > 0 && (
+              <View style={[styles.tabPillBadge, activeTab === 'all_active' ? styles.tabPillBadgeActive : styles.tabPillBadgeInactive]}>
+                <Text style={[styles.tabPillBadgeText, activeTab === 'all_active' && styles.tabPillBadgeTextActive]}>
+                  {totalActiveCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'incoming' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('incoming')}
-        >
-          <Text style={[styles.tabLabel, activeTab === 'incoming' && styles.tabLabelActive]}>Incoming</Text>
-          {counts.incoming > 0 && (
-            <View style={[styles.tabBadge, activeTab === 'incoming' ? styles.tabBadgeActiveUrgent : styles.tabBadgeInactive]}>
-              <Text style={styles.tabBadgeText}>{counts.incoming}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          {/* Incoming Tab */}
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'incoming' && styles.tabPillActive]}
+            onPress={() => setActiveTab('incoming')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'incoming' && styles.tabPillTextActive]}>
+              Incoming
+            </Text>
+            {counts.incoming > 0 && (
+              <View style={[styles.tabPillBadge, styles.badgeUrgent]}>
+                <Text style={styles.tabPillBadgeTextUrgent}>{counts.incoming}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'preparing' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('preparing')}
-        >
-          <Text style={[styles.tabLabel, activeTab === 'preparing' && styles.tabLabelActive]}>In Prep</Text>
-          {counts.preparing > 0 && (
-            <View style={[styles.tabBadge, activeTab === 'preparing' ? styles.tabBadgeActivePrep : styles.tabBadgeInactive]}>
-              <Text style={styles.tabBadgeText}>{counts.preparing}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          {/* In Prep Tab */}
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'preparing' && styles.tabPillActive]}
+            onPress={() => setActiveTab('preparing')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'preparing' && styles.tabPillTextActive]}>
+              In Prep
+            </Text>
+            {counts.preparing > 0 && (
+              <View style={[styles.tabPillBadge, styles.badgePrep]}>
+                <Text style={styles.tabPillBadgeTextWhite}>{counts.preparing}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'ready' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('ready')}
-        >
-          <Text style={[styles.tabLabel, activeTab === 'ready' && styles.tabLabelActive]}>Ready</Text>
-          {counts.ready > 0 && (
-            <View style={[styles.tabBadge, activeTab === 'ready' ? styles.tabBadgeActiveReady : styles.tabBadgeInactive]}>
-              <Text style={styles.tabBadgeText}>{counts.ready}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          {/* Ready Tab */}
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'ready' && styles.tabPillActive]}
+            onPress={() => setActiveTab('ready')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'ready' && styles.tabPillTextActive]}>
+              Ready
+            </Text>
+            {counts.ready > 0 && (
+              <View style={[styles.tabPillBadge, styles.badgeReady]}>
+                <Text style={styles.tabPillBadgeTextWhite}>{counts.ready}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'dispatched' && styles.tabBtnActive]}
-          onPress={() => setActiveTab('dispatched')}
-        >
-          <Text style={[styles.tabLabel, activeTab === 'dispatched' && styles.tabLabelActive]}>Done</Text>
-          {counts.dispatched > 0 && (
-            <View style={[styles.tabBadge, styles.tabBadgeInactive]}>
-              <Text style={[styles.tabBadgeText, { color: '#6B7280' }]}>{counts.dispatched}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          {/* Done Tab */}
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'dispatched' && styles.tabPillActive]}
+            onPress={() => setActiveTab('dispatched')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'dispatched' && styles.tabPillTextActive]}>
+              Done
+            </Text>
+            {counts.dispatched > 0 && (
+              <View style={[styles.tabPillBadge, styles.tabPillBadgeInactive]}>
+                <Text style={styles.tabPillBadgeText}>{counts.dispatched}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* Orders List */}
@@ -441,33 +494,58 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         ) : (
           filteredOrders.map((order) => {
             const isLoadingThis = actionLoading === order.id;
+            const isCompleted = order.status === 'dispatched' || order.status === 'delivered';
 
             return (
               <View key={order.id} style={styles.orderCard}>
                 {/* 1. PROMINENT DELIVERY DATE & HANDOVER TIME BANNER */}
-                <View style={styles.prominentHandoverBox}>
-                  <View style={styles.handoverLeft}>
-                    <View style={styles.alarmBadge}>
-                      <Ionicons name="alarm" size={20} color="#FFFFFF" />
+                {isCompleted ? (
+                  <View style={[styles.prominentHandoverBox, styles.handoverBoxDone]}>
+                    <View style={styles.handoverLeft}>
+                      <View style={styles.doneCheckBadge}>
+                        <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
+                      </View>
+                      <View>
+                        <Text style={styles.handoverTaglineDone}>HANDOVER COMPLETED</Text>
+                        <Text style={styles.handoverBigTimeDone}>
+                          Handed to {order.riderName || 'Driver'}
+                        </Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.handoverTagline}>HANDOVER TO DRIVER BY</Text>
-                      <Text style={styles.handoverBigTime}>
-                        {order.handoverTime || '12:15 PM'}
-                      </Text>
-                    </View>
-                  </View>
 
-                  <View style={styles.handoverRight}>
-                    <View style={styles.deliveryDatePill}>
-                      <Ionicons name="calendar" size={12} color="#1E3A8A" />
-                      <Text style={styles.deliveryDateText}>
-                        {order.deliveryDate || 'Today, Oct 30'}
-                      </Text>
+                    <View style={styles.handoverRight}>
+                      <View style={styles.deliveryDatePillDone}>
+                        <Ionicons name="checkmark-circle" size={12} color="#065F46" />
+                        <Text style={styles.deliveryDateTextDone}>Dispatched</Text>
+                      </View>
+                      <Text style={styles.deliverySlotSubTextDone}>{order.deliverySlot}</Text>
                     </View>
-                    <Text style={styles.deliverySlotSubText}>{order.deliverySlot}</Text>
                   </View>
-                </View>
+                ) : (
+                  <View style={styles.prominentHandoverBox}>
+                    <View style={styles.handoverLeft}>
+                      <View style={styles.alarmBadge}>
+                        <Ionicons name="alarm" size={20} color="#FFFFFF" />
+                      </View>
+                      <View>
+                        <Text style={styles.handoverTagline}>HANDOVER TO DRIVER BY</Text>
+                        <Text style={styles.handoverBigTime}>
+                          {order.handoverTime || '12:15 PM'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.handoverRight}>
+                      <View style={styles.deliveryDatePill}>
+                        <Ionicons name="calendar" size={12} color="#1E3A8A" />
+                        <Text style={styles.deliveryDateText}>
+                          {order.deliveryDate || 'Today, Oct 30'}
+                        </Text>
+                      </View>
+                      <Text style={styles.deliverySlotSubText}>{order.deliverySlot}</Text>
+                    </View>
+                  </View>
+                )}
 
                 {/* 2. Order ID & Customer Header */}
                 <View style={styles.orderCardHeader}>
@@ -867,23 +945,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAF9',
   },
   header: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    marginBottom: 6,
   },
-  headerLeft: {
-    flex: 1,
-  },
-  liveIndicatorRow: {
+  restoBadgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 2,
+    flex: 1,
+    marginRight: 8,
   },
   pulseDot: {
     width: 8,
@@ -893,53 +973,49 @@ const styles = StyleSheet.create({
   },
   liveBadgeText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#059669',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
   },
   restoBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#4B5563',
+    color: '#334155',
+    flexShrink: 1,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.forest,
-  },
-  headerRight: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   audioToggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
+    gap: 4,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
   },
   audioToggleActive: {
-    backgroundColor: COLORS.forest,
+    backgroundColor: '#0F172A',
   },
   audioToggleText: {
     fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.muted,
+    fontWeight: '700',
+    color: '#64748B',
   },
   audioToggleTextActive: {
-    color: COLORS.white,
+    color: '#FFFFFF',
   },
   headerLogoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     backgroundColor: '#FEE2E2',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#FECACA',
   },
@@ -948,96 +1024,157 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#DC2626',
   },
-  scheduleHeaderBar: {
+  headerTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FFF1F2',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#FFE4E6',
   },
-  scheduleHeaderBarLeft: {
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#1E3A2F',
+    letterSpacing: -0.3,
+  },
+  headerSubBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  headerSubBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#047857',
+  },
+  scheduleCard: {
+    marginHorizontal: 14,
+    marginTop: 10,
+    marginBottom: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  scheduleLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flex: 1,
   },
-  scheduleHeaderTitle: {
-    fontSize: 11,
+  scheduleIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F59E0B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scheduleLabel: {
+    fontSize: 9,
     fontWeight: '800',
-    color: '#991B1B',
+    color: '#92400E',
     letterSpacing: 0.5,
   },
-  scheduleHeaderCountBadge: {
-    backgroundColor: '#991B1B',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+  scheduleTimeText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#78350F',
   },
-  scheduleHeaderCountText: {
+  scheduleCountPill: {
+    backgroundColor: '#78350F',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  scheduleCountPillText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  tabsContainer: {
-    flexDirection: 'row',
+  tabsWrapper: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: 8,
-    paddingTop: 6,
-    paddingBottom: 2,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
+    paddingVertical: 6,
   },
-  tabBtn: {
-    flex: 1,
+  tabsScrollContent: {
+    paddingHorizontal: 14,
+    gap: 8,
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-    gap: 4,
   },
-  tabBtnActive: {
-    borderBottomColor: COLORS.forest,
+  tabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  tabLabel: {
+  tabPillActive: {
+    backgroundColor: '#204D39',
+    borderColor: '#204D39',
+  },
+  tabPillText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: '700',
+    color: '#475569',
   },
-  tabLabelActive: {
-    color: COLORS.forest,
+  tabPillTextActive: {
+    color: '#FFFFFF',
     fontWeight: '800',
   },
-  tabBadge: {
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    paddingHorizontal: 4,
+  tabPillBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#CBD5E1',
   },
-  tabBadgeInactive: {
-    backgroundColor: '#E5E7EB',
+  tabPillBadgeActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
-  tabBadgeActiveTotal: {
-    backgroundColor: COLORS.forest,
+  tabPillBadgeInactive: {
+    backgroundColor: '#E2E8F0',
   },
-  tabBadgeActiveUrgent: {
-    backgroundColor: COLORS.urgent,
+  tabPillBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#334155',
   },
-  tabBadgeActivePrep: {
+  tabPillBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  badgeUrgent: {
+    backgroundColor: '#DC2626',
+  },
+  tabPillBadgeTextUrgent: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  badgePrep: {
     backgroundColor: '#D97706',
   },
-  tabBadgeActiveReady: {
+  badgeReady: {
     backgroundColor: '#059669',
   },
-  tabBadgeText: {
-    fontSize: 9,
+  tabPillBadgeTextWhite: {
+    fontSize: 10,
     fontWeight: '800',
-    color: COLORS.white,
+    color: '#FFFFFF',
   },
   listContent: {
     padding: 14,
@@ -1149,6 +1286,48 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#78350F',
+  },
+  handoverBoxDone: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  doneCheckBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#059669',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  handoverTaglineDone: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#065F46',
+    letterSpacing: 0.5,
+  },
+  handoverBigTimeDone: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#047857',
+  },
+  deliveryDatePillDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  deliveryDateTextDone: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#065F46',
+  },
+  deliverySlotSubTextDone: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#047857',
   },
   orderCardHeader: {
     flexDirection: 'row',
