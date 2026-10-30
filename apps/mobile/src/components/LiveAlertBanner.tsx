@@ -98,7 +98,7 @@ export const LiveAlertBanner: React.FC<LiveAlertBannerProps> = ({
 
     if (navigationRef?.current) {
       if (targetUpdateId) {
-        navigationRef.current.navigate('UpdateDetail', { id: targetUpdateId });
+        navigationRef.current.navigate('UpdateDetail', { updateId: targetUpdateId, id: targetUpdateId });
       } else {
         navigationRef.current.navigate('MainTabs', { screen: 'Updates' });
       }

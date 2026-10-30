@@ -23,7 +23,7 @@ interface UpdateDetailScreenProps {
 }
 
 export const UpdateDetailScreen: React.FC<UpdateDetailScreenProps> = ({ route, navigation }) => {
-  const { updateId } = route.params;
+  const updateId = route.params?.updateId || route.params?.id;
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

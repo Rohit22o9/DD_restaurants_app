@@ -49,7 +49,9 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
       mobileApi.markNotificationRead(notif.id).catch(console.error);
       setNotifications(notifications.map(n => (n.id === notif.id ? { ...n, isRead: true } : n)));
     }
-    if (notif.data?.updateId) {
+    if (notif.data?.orderId) {
+      navigation.navigate('MainTabs', { screen: 'Orders' });
+    } else if (notif.data?.updateId) {
       navigation.navigate('UpdateDetail', { updateId: notif.data.updateId });
     }
   };
