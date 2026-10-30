@@ -202,11 +202,12 @@ class MobileApi {
         body: JSON.stringify({ driverName }),
       });
     } catch (err: any) {
-      // Fallback for older backend versions without dedicated /delivery endpoint:
-      if (err.message && (err.message.includes('404') || err.message.includes('Cannot POST'))) {
+      // Fallback: transition order to 'dispatched' so the kitchen workflow is never blocked
+      try {
         return await this.updateOrderStatus(orderId, 'dispatched');
+      } catch (innerErr) {
+        throw err;
       }
-      throw err;
     }
   }
 
