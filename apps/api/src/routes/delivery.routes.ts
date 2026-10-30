@@ -46,7 +46,7 @@ deliveryRouter.post('/orders/:id/confirm-receipt', (req, res) => {
   );
 
   AuditService.log({
-    userId: 'delivery-driver-app',
+    userId: undefined,
     userEmail: 'driver@delivery.dailydrop.com',
     action: 'DRIVER_CONFIRMED_PICKUP',
     resourceType: 'order',
