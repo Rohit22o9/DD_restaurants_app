@@ -42,9 +42,12 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
   const [soundAlertEnabled, setSoundAlertEnabled] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // 1. Popup Window for Incoming Order Acknowledgment
+  // 1. Popup Window for Incoming Order Acknowledgment with 1-Minute Cooldown
   const [ackModalOrder, setAckModalOrder] = useState<any | null>(null);
   const acknowledgedIdsRef = useRef<Set<string>>(new Set());
+  const lastAlertPopupTimeRef = useRef<number>(0);
+  const dismissedAlertsRef = useRef<Record<string, number>>({});
+  const ALERT_COOLDOWN_MS = 60 * 1000; // 1-minute time limit between order alert popups
 
   // 2. Real-time Driver Pickup Toast Notification
   const [driverPickupBanner, setDriverPickupBanner] = useState<{
@@ -71,11 +74,21 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         setCounts(res.counts);
       }
 
-      // Detect any incoming unacknowledged order and pop acknowledgment window
-      const unackIncoming = orderList.filter(
-        (o) => o.status === 'incoming' && !acknowledgedIdsRef.current.has(o.id)
-      );
-      if (unackIncoming.length > 0 && !ackModalOrder) {
+      // Detect incoming unacknowledged order and pop acknowledgment window
+      // Strictly enforce 1-minute time limit between alert popups for testing
+      const now = Date.now();
+      const timeSinceLastAlert = now - lastAlertPopupTimeRef.current;
+
+      const unackIncoming = orderList.filter((o) => {
+        if (o.status !== 'incoming') return false;
+        if (acknowledgedIdsRef.current.has(o.id)) return false;
+        const dismissedAt = dismissedAlertsRef.current[o.id] || 0;
+        if (now - dismissedAt < ALERT_COOLDOWN_MS) return false;
+        return true;
+      });
+
+      if (unackIncoming.length > 0 && !ackModalOrder && timeSinceLastAlert >= ALERT_COOLDOWN_MS) {
+        lastAlertPopupTimeRef.current = now;
         setAckModalOrder(unackIncoming[0]);
         if (soundAlertEnabled) {
           Vibration.vibrate([0, 500, 200, 500]);
@@ -120,24 +133,32 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
     fetchOrders();
   }, []);
 
+  // Dismiss acknowledgment popup with 1-minute snooze
+  const handleDismissAckModal = () => {
+    if (ackModalOrder) {
+      dismissedAlertsRef.current[ackModalOrder.id] = Date.now();
+    }
+    lastAlertPopupTimeRef.current = Date.now(); // Enforce 1-minute cooldown before any alert pops again
+    setAckModalOrder(null);
+  };
+
   // 1-Tap Order Acknowledgment via Popup Window
   const handleAcknowledgeOrder = async (orderId: string) => {
     try {
       setActionLoading(orderId);
       await mobileApi.acknowledgeOrder(orderId);
       acknowledgedIdsRef.current.add(orderId);
+      lastAlertPopupTimeRef.current = Date.now(); // 1-minute cooldown before next alert popup
       setAckModalOrder(null);
       Vibration.vibrate(120);
 
       await fetchOrders(true);
 
-      // Check if another unacknowledged incoming order exists
+      // Remaining orders stay visible in list without popping modals back-to-back
       const remaining = orders.filter(
         (o) => o.status === 'incoming' && o.id !== orderId && !acknowledgedIdsRef.current.has(o.id)
       );
-      if (remaining.length > 0) {
-        setAckModalOrder(remaining[0]);
-      } else {
+      if (remaining.length === 0) {
         setActiveTab('preparing');
       }
     } catch (err: any) {
@@ -334,15 +355,15 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         </View>
       </View>
 
-      {/* Modern Handover Schedule Card */}
+      {/* Modern Handover Schedule Card (Clean & Compact, No Overlap) */}
       <View style={styles.scheduleCard}>
         <View style={styles.scheduleLeft}>
           <View style={styles.scheduleIconWrap}>
             <Ionicons name="time" size={16} color="#FFFFFF" />
           </View>
-          <View>
-            <Text style={styles.scheduleLabel}>NEXT DRIVER HANDOVER (PERTH AWST)</Text>
-            <Text style={styles.scheduleTimeText}>
+          <View style={styles.scheduleTextWrap}>
+            <Text style={styles.scheduleLabel}>NEXT DRIVER HANDOVER</Text>
+            <Text style={styles.scheduleTimeText} numberOfLines={1}>
               {totalActiveCount > 0 ? `${earliestCutoff} AWST Cutoff` : 'All Active Orders Dispatched'}
             </Text>
           </View>
@@ -499,51 +520,63 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
 
             return (
               <View key={order.id} style={styles.orderCard}>
-                {/* 1. PROMINENT DELIVERY DATE & HANDOVER TIME BANNER */}
+                {/* 1. PROMINENT DELIVERY DATE & HANDOVER TIME BANNER (Two-tier, zero clipping) */}
                 {isCompleted ? (
                   <View style={[styles.prominentHandoverBox, styles.handoverBoxDone]}>
-                    <View style={styles.handoverLeft}>
-                      <View style={styles.doneCheckBadge}>
-                        <Ionicons name="checkmark-done" size={18} color="#FFFFFF" />
+                    <View style={styles.handoverTopRow}>
+                      <View style={styles.handoverLeft}>
+                        <View style={styles.doneCheckBadge}>
+                          <Ionicons name="checkmark-done" size={17} color="#FFFFFF" />
+                        </View>
+                        <View style={styles.handoverLeftTextWrap}>
+                          <Text style={styles.handoverTaglineDone}>HANDOVER COMPLETED</Text>
+                          <Text style={styles.handoverBigTimeDone} numberOfLines={1}>
+                            Handed to {order.riderName || 'Driver'}
+                          </Text>
+                        </View>
                       </View>
-                      <View>
-                        <Text style={styles.handoverTaglineDone}>HANDOVER COMPLETED</Text>
-                        <Text style={styles.handoverBigTimeDone}>
-                          Handed to {order.riderName || 'Driver'}
-                        </Text>
-                      </View>
-                    </View>
 
-                    <View style={styles.handoverRight}>
                       <View style={styles.deliveryDatePillDone}>
                         <Ionicons name="checkmark-circle" size={12} color="#065F46" />
                         <Text style={styles.deliveryDateTextDone}>Dispatched</Text>
                       </View>
-                      <Text style={styles.deliverySlotSubTextDone}>{order.deliverySlot}</Text>
+                    </View>
+
+                    <View style={[styles.handoverBottomRow, { borderTopColor: '#A7F3D0' }]}>
+                      <Ionicons name="calendar-outline" size={12} color="#065F46" style={{ marginRight: 4 }} />
+                      <Text style={styles.deliverySlotSubTextDone} numberOfLines={1}>
+                        {order.deliveryDate || 'Today, Oct 30'} • {order.deliverySlot}
+                      </Text>
                     </View>
                   </View>
                 ) : (
                   <View style={styles.prominentHandoverBox}>
-                    <View style={styles.handoverLeft}>
-                      <View style={styles.alarmBadge}>
-                        <Ionicons name="alarm" size={20} color="#FFFFFF" />
+                    <View style={styles.handoverTopRow}>
+                      <View style={styles.handoverLeft}>
+                        <View style={styles.alarmBadge}>
+                          <Ionicons name="alarm" size={17} color="#FFFFFF" />
+                        </View>
+                        <View style={styles.handoverLeftTextWrap}>
+                          <Text style={styles.handoverTagline}>HANDOVER TO DRIVER BY</Text>
+                          <Text style={styles.handoverBigTime}>
+                            {order.handoverTime || '12:15 PM'}
+                          </Text>
+                        </View>
                       </View>
-                      <View>
-                        <Text style={styles.handoverTagline}>HANDOVER TO DRIVER BY</Text>
-                        <Text style={styles.handoverBigTime}>
-                          {order.handoverTime || '12:15 PM'}
-                        </Text>
-                      </View>
-                    </View>
 
-                    <View style={styles.handoverRight}>
                       <View style={styles.deliveryDatePill}>
-                        <Ionicons name="calendar" size={12} color="#1E3A8A" />
+                        <Ionicons name="calendar" size={12} color="#1E40AF" />
                         <Text style={styles.deliveryDateText}>
                           {order.deliveryDate || 'Today, Oct 30'}
                         </Text>
                       </View>
-                      <Text style={styles.deliverySlotSubText}>{order.deliverySlot}</Text>
+                    </View>
+
+                    <View style={styles.handoverBottomRow}>
+                      <Ionicons name="time-outline" size={12} color="#9A3412" style={{ marginRight: 4 }} />
+                      <Text style={styles.deliverySlotSubText} numberOfLines={1}>
+                        {order.deliverySlot}
+                      </Text>
                     </View>
                   </View>
                 )}
@@ -746,7 +779,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         visible={Boolean(ackModalOrder)}
         transparent
         animationType="slide"
-        onRequestClose={() => setAckModalOrder(null)}
+        onRequestClose={handleDismissAckModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.ackModalCard}>
@@ -760,27 +793,42 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                 <Text style={styles.ackAlertSub}>Please acknowledge to start preparation</Text>
               </View>
               <TouchableOpacity
-                onPress={() => setAckModalOrder(null)}
+                onPress={handleDismissAckModal}
                 style={styles.ackCloseIconBtn}
+                accessibilityLabel="Close"
               >
                 <Ionicons name="close" size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
 
-            {/* Prominent Handover Box inside Popup */}
+            {/* Prominent Handover Box inside Popup (Two-tier, zero clipping) */}
             <View style={styles.ackHandoverHighlight}>
-              <View style={styles.ackHandoverLeft}>
-                <Ionicons name="alarm" size={22} color="#FFFFFF" />
-                <View>
-                  <Text style={styles.ackHandoverLabel}>HANDOVER TO DRIVER BY</Text>
-                  <Text style={styles.ackHandoverTimeText}>
-                    {ackModalOrder?.handoverTime || '12:15 PM'}
+              <View style={styles.ackHandoverTopRow}>
+                <View style={styles.ackHandoverLeft}>
+                  <View style={styles.ackAlarmBadge}>
+                    <Ionicons name="alarm" size={17} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.ackHandoverTextWrap}>
+                    <Text style={styles.ackHandoverLabel}>HANDOVER TO DRIVER BY</Text>
+                    <Text style={styles.ackHandoverTimeText}>
+                      {ackModalOrder?.handoverTime || '12:15 PM'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.ackDatePill}>
+                  <Ionicons name="calendar-outline" size={11} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.ackHandoverDate}>
+                    {ackModalOrder?.deliveryDate || 'Today, Oct 30'}
                   </Text>
                 </View>
               </View>
-              <View style={styles.ackHandoverRight}>
-                <Text style={styles.ackHandoverDate}>{ackModalOrder?.deliveryDate || 'Today, Oct 30'}</Text>
-                <Text style={styles.ackDeliverySlotText}>{ackModalOrder?.deliverySlot}</Text>
+
+              <View style={styles.ackHandoverBottomRow}>
+                <Ionicons name="time-outline" size={12} color="#FECACA" style={{ marginRight: 4 }} />
+                <Text style={styles.ackDeliverySlotText} numberOfLines={1}>
+                  {ackModalOrder?.deliverySlot}
+                </Text>
               </View>
             </View>
 
@@ -1068,6 +1116,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+    marginRight: 6,
+  },
+  scheduleTextWrap: {
+    flex: 1,
   },
   scheduleIconWrap: {
     width: 28,
@@ -1076,6 +1128,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F59E0B',
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
   scheduleLabel: {
     fontSize: 9,
@@ -1093,6 +1146,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 12,
+    flexShrink: 0,
   },
   scheduleCountPillText: {
     fontSize: 10,
@@ -1231,9 +1285,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   prominentHandoverBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: '#FFF7ED',
     borderWidth: 1.5,
     borderColor: '#FDBA74',
@@ -1241,33 +1292,40 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 12,
   },
+  handoverTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   handoverLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    flex: 1,
+    marginRight: 6,
+  },
+  handoverLeftTextWrap: {
+    flexShrink: 1,
   },
   alarmBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#EA580C',
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
   handoverTagline: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '800',
     color: '#9A3412',
     letterSpacing: 0.5,
   },
   handoverBigTime: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: '900',
     color: '#9A3412',
-  },
-  handoverRight: {
-    alignItems: 'flex-end',
-    gap: 3,
   },
   deliveryDatePill: {
     flexDirection: 'row',
@@ -1275,39 +1333,52 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#EFF6FF',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 3.5,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    flexShrink: 0,
   },
   deliveryDateText: {
     fontSize: 11,
     fontWeight: '800',
     color: '#1E40AF',
   },
+  handoverBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 7,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#FED7AA',
+  },
   deliverySlotSubText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#78350F',
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#9A3412',
+    flex: 1,
   },
   handoverBoxDone: {
     backgroundColor: '#ECFDF5',
     borderColor: '#A7F3D0',
   },
   doneCheckBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#059669',
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
   handoverTaglineDone: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '800',
     color: '#065F46',
     letterSpacing: 0.5,
   },
   handoverBigTimeDone: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     color: '#047857',
   },
@@ -1317,8 +1388,11 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#D1FAE5',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 3.5,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    flexShrink: 0,
   },
   deliveryDateTextDone: {
     fontSize: 11,
@@ -1326,9 +1400,10 @@ const styles = StyleSheet.create({
     color: '#065F46',
   },
   deliverySlotSubTextDone: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 10.5,
+    fontWeight: '700',
     color: '#047857',
+    flex: 1,
   },
   orderCardHeader: {
     flexDirection: 'row',
@@ -1684,43 +1759,75 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   ackHandoverHighlight: {
+    backgroundColor: '#7F1D1D',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 14,
+  },
+  ackHandoverTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#7F1D1D',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
   },
   ackHandoverLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    flex: 1,
+    marginRight: 6,
+  },
+  ackAlarmBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#DC2626',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  ackHandoverTextWrap: {
+    flexShrink: 1,
   },
   ackHandoverLabel: {
-    fontSize: 9,
+    fontSize: 8.5,
     fontWeight: '800',
     color: '#FECACA',
     letterSpacing: 0.5,
   },
   ackHandoverTimeText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
     color: '#FFFFFF',
   },
-  ackHandoverRight: {
-    alignItems: 'flex-end',
-    gap: 2,
+  ackDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    flexShrink: 0,
   },
   ackHandoverDate: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  ackHandoverBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 7,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.15)',
+  },
   ackDeliverySlotText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FCA5A5',
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FECACA',
+    flex: 1,
   },
   ackOrderInfoRow: {
     flexDirection: 'row',
