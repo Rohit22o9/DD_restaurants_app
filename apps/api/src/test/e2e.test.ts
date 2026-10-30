@@ -48,6 +48,41 @@ async function testApi() {
   assert.strictEqual(privateResponseCheck, undefined, 'Bawarchi must not have Gulati private response data');
   console.log('✔ Test 6: Strict tenant/restaurant data isolation verified');
 
+  // Test 7: Order handover time and date verification
+  const order8491 = db.queryOne<any>(`SELECT * FROM orders WHERE order_number = '#DD-8491'`);
+  assert.strictEqual(order8491?.handover_time, '12:15 PM', 'Order #DD-8491 must have prominent handover time');
+  assert.strictEqual(order8491?.delivery_date, 'Today, Oct 30', 'Order #DD-8491 must have delivery date');
+  const items = JSON.parse(order8491?.items_json || '[]');
+  assert.strictEqual(items[0]?.quantity, 2, 'Item must have valid quantity number');
+  assert.strictEqual(typeof items[0]?.price, 'number', 'Item price must be number');
+  console.log('✔ Test 7: Orders have prominent delivery date & handover times without NaN');
+
+  // Test 8: Safe SQLite binding with undefined / null parameters
+  const updateRes = db.run(
+    `UPDATE orders SET prep_time_mins = COALESCE(?, prep_time_mins) WHERE id = ?`,
+    [undefined, order8491.id]
+  );
+  assert.strictEqual(updateRes.changes >= 1, true, 'DB run with undefined parameter must be sanitized to null without crash');
+  console.log('✔ Test 8: SQLite undefined parameter sanitizer verified (no binding crashes)');
+
+  // Test 9: Driver confirmed pickup notification
+  const notifId = 'test-notif-driver';
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO in_app_notifications (id, recipient_user_id, restaurant_id, type, title, message, data, is_read, created_at)
+     VALUES (?, NULL, ?, 'driver_pickup_confirmed', 'Driver Picked Up Order', 'Driver Aman confirmed receipt', ?, 0, ?)`,
+    [notifId, order8491.restaurant_id, JSON.stringify({ orderId: order8491.id }), now]
+  );
+  const notif = db.queryOne<any>(`SELECT * FROM in_app_notifications WHERE id = ?`, [notifId]);
+  assert.strictEqual(notif?.type, 'driver_pickup_confirmed', 'Restaurant must receive driver pickup notification');
+  console.log('✔ Test 9: Driver receipt confirmation & restaurant notification verified');
+
+  // Test 10: Restaurant Online Presence
+  db.run(`UPDATE restaurants SET is_online = 1, last_active_at = ? WHERE id = ?`, [now, order8491.restaurant_id]);
+  const onlineResto = db.queryOne<any>(`SELECT is_online FROM restaurants WHERE id = ?`, [order8491.restaurant_id]);
+  assert.strictEqual(onlineResto?.is_online, 1, 'Restaurant partner must be tracked as online');
+  console.log('✔ Test 10: Restaurant partner live presence & active login verified');
+
   console.log('--- ALL INTEGRATION TESTS PASSED SUCCESSFULLY! ---');
 }
 

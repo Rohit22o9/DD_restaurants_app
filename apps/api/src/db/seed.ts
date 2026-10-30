@@ -47,10 +47,13 @@ export async function runSeed() {
     const rId = `dd-resto-${i + 1}`;
     const status = i < 7 ? 'active' : (i === 7 ? 'pending_invitation' : 'active');
 
+    const isOnline = i === 0 ? 1 : 0;
+    const lastActiveAt = i === 0 ? now : null;
+
     db.run(
-      `INSERT OR REPLACE INTO restaurants (id, name, code, owner_name, email, phone, status, address, notes, date_joined, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pre-order catering & daily delivery partner', ?, ?, ?)`,
-      [rId, r.name, r.code, r.owner, r.email, r.phone, status, r.address, now, now, now]
+      `INSERT OR REPLACE INTO restaurants (id, name, code, owner_name, email, phone, status, is_online, last_active_at, address, notes, date_joined, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pre-order catering & daily delivery partner', ?, ?, ?)`,
+      [rId, r.name, r.code, r.owner, r.email, r.phone, status, isOnline, lastActiveAt, r.address, now, now, now]
     );
 
     seededRestaurants.push({ id: rId, name: r.name, code: r.code, email: r.email });
@@ -287,12 +290,14 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
       customer_name: 'Vikram Malhotra',
       customer_phone: '+91 98101 23456',
       delivery_slot: 'Lunch Drop • 12:30 PM',
+      delivery_date: 'Today, Oct 30',
+      handover_time: '12:15 PM',
       status: 'incoming',
       prep_time_mins: 20,
       items: [
-        { name: 'Murgh Makhani Thali', qty: 2, price: 320, dietary: 'Non-Veg', notes: 'Extra butter on top' },
-        { name: 'Garlic Butter Naan', qty: 4, price: 60, dietary: 'Veg' },
-        { name: 'Jeera Pulao', qty: 2, price: 140, dietary: 'Veg' }
+        { name: 'Murgh Makhani Thali', quantity: 2, qty: 2, price: 320, dietary: 'Non-Veg', notes: 'Extra butter on top' },
+        { name: 'Garlic Butter Naan', quantity: 4, qty: 4, price: 60, dietary: 'Veg' },
+        { name: 'Jeera Pulao', quantity: 2, qty: 2, price: 140, dietary: 'Veg' }
       ],
       subtotal: 1160,
       tax: 58,
@@ -311,11 +316,13 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
       customer_name: 'Ananya Roy',
       customer_phone: '+91 98200 33445',
       delivery_slot: 'Lunch Drop • 12:45 PM',
+      delivery_date: 'Today, Oct 30',
+      handover_time: '12:30 PM',
       status: 'preparing',
       prep_time_mins: 15,
       items: [
-        { name: 'Dal Makhani Executive Box', qty: 3, price: 230, dietary: 'Veg', notes: 'Less spicy gravy' },
-        { name: 'Lachha Paratha', qty: 6, price: 50, dietary: 'Veg' }
+        { name: 'Dal Makhani Executive Box', quantity: 3, qty: 3, price: 230, dietary: 'Veg', notes: 'Less spicy gravy' },
+        { name: 'Lachha Paratha', quantity: 6, qty: 6, price: 50, dietary: 'Veg' }
       ],
       subtotal: 990,
       tax: 49.5,
@@ -334,11 +341,13 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
       customer_name: 'Karan Johar',
       customer_phone: '+91 98330 66778',
       delivery_slot: 'Lunch Drop • 01:00 PM',
+      delivery_date: 'Today, Oct 30',
+      handover_time: '12:45 PM',
       status: 'ready',
       prep_time_mins: 0,
       items: [
-        { name: 'Tandoori Chicken Half', qty: 2, price: 380, dietary: 'Non-Veg' },
-        { name: 'Mint Chutney & Salad', qty: 2, price: 40, dietary: 'Veg' }
+        { name: 'Tandoori Chicken Half', quantity: 2, qty: 2, price: 380, dietary: 'Non-Veg' },
+        { name: 'Mint Chutney & Salad', quantity: 2, qty: 2, price: 40, dietary: 'Veg' }
       ],
       subtotal: 840,
       tax: 42,
@@ -357,10 +366,13 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
       customer_name: 'Rohit Mehta',
       customer_phone: '+91 98111 77889',
       delivery_slot: 'Morning Batch • 11:30 AM',
+      delivery_date: 'Today, Oct 30',
+      handover_time: '11:15 AM',
+      driver_confirmed_at: now,
       status: 'dispatched',
       prep_time_mins: 0,
       items: [
-        { name: 'Paneer Tikka Roll', qty: 4, price: 120, dietary: 'Veg' }
+        { name: 'Paneer Tikka Roll', quantity: 4, qty: 4, price: 120, dietary: 'Veg' }
       ],
       subtotal: 480,
       tax: 24,
@@ -379,11 +391,13 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
       customer_name: 'Siddharth Rao',
       customer_phone: '+91 98480 99887',
       delivery_slot: 'Lunch Drop • 12:30 PM',
+      delivery_date: 'Today, Oct 30',
+      handover_time: '12:15 PM',
       status: 'incoming',
       prep_time_mins: 25,
       items: [
-        { name: 'Special Hyderabadi Mutton Biryani', qty: 2, price: 420, dietary: 'Non-Veg' },
-        { name: 'Mirchi Ka Salan & Raita', qty: 2, price: 50, dietary: 'Veg' }
+        { name: 'Special Hyderabadi Mutton Biryani', quantity: 2, qty: 2, price: 420, dietary: 'Non-Veg' },
+        { name: 'Mirchi Ka Salan & Raita', quantity: 2, qty: 2, price: 50, dietary: 'Veg' }
       ],
       subtotal: 940,
       tax: 47,
@@ -399,8 +413,8 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
 
   for (const o of ordersData) {
     db.run(
-      `INSERT OR REPLACE INTO orders (id, restaurant_id, order_number, customer_name, customer_phone, delivery_slot, status, prep_time_mins, items_json, subtotal, tax, total_amount, special_instructions, rider_name, rider_phone, rider_status, rider_eta_mins, dispatch_pin, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR REPLACE INTO orders (id, restaurant_id, order_number, customer_name, customer_phone, delivery_slot, delivery_date, handover_time, status, prep_time_mins, items_json, subtotal, tax, total_amount, special_instructions, rider_name, rider_phone, rider_status, rider_eta_mins, dispatch_pin, driver_confirmed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         o.id,
         o.restaurant_id,
@@ -408,6 +422,8 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
         o.customer_name,
         o.customer_phone,
         o.delivery_slot,
+        o.delivery_date,
+        o.handover_time,
         o.status,
         o.prep_time_mins,
         JSON.stringify(o.items),
@@ -420,6 +436,7 @@ For any questions, reach out to your Daily Drop Partner Success Manager.`,
         o.rider_status,
         o.rider_eta_mins,
         o.dispatch_pin,
+        (o as any).driver_confirmed_at || null,
         now,
         now,
       ]

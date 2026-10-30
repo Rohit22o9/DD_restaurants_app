@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { LiveOrders } from './pages/LiveOrders';
 import { Restaurants } from './pages/Restaurants';
 import { Updates } from './pages/Updates';
 import { CreateUpdate } from './pages/CreateUpdate';
@@ -87,6 +88,7 @@ export function App() {
 
         <main className="flex-1 min-w-0 pb-16">
           {currentTab === 'dashboard' && <Dashboard onNavigate={handleNavigate} />}
+          {currentTab === 'orders' && <LiveOrders />}
           {currentTab === 'restaurants' && <Restaurants />}
           {currentTab === 'updates' && <Updates onNavigate={handleNavigate} />}
           {currentTab === 'create-update' && (

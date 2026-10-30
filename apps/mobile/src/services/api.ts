@@ -74,6 +74,18 @@ class MobileApi {
     });
   }
 
+  async logout() {
+    return this.request<{ success: boolean; message: string }>('/auth/logout', {
+      method: 'POST',
+    }).catch(() => ({ success: true, message: 'Logged out locally' }));
+  }
+
+  async sendHeartbeat() {
+    return this.request<{ success: boolean; timestamp: string }>('/restaurant/heartbeat', {
+      method: 'POST',
+    }).catch(() => null);
+  }
+
   // Dashboard & Feeds
   async getDashboard() {
     return this.request<{ success: boolean; data: any }>('/restaurant/dashboard');
@@ -161,8 +173,41 @@ class MobileApi {
   async updateOrderStatus(orderId: string, status: string, prepTimeMins?: number) {
     return this.request<{ success: boolean; message: string; data: any }>(`/restaurant/orders/${orderId}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, prepTimeMins }),
+      body: JSON.stringify({
+        status,
+        prepTimeMins: prepTimeMins !== undefined ? prepTimeMins : null,
+      }),
     });
+  }
+
+  async acknowledgeOrder(orderId: string) {
+    try {
+      return await this.request<{ success: boolean; message: string; data: any }>(`/restaurant/orders/${orderId}/acknowledge`, {
+        method: 'POST',
+      });
+    } catch (err: any) {
+      // Fallback for older backend versions that do not have dedicated /acknowledge endpoint:
+      // Directly transition order to 'preparing' with safe null prepTimeMins
+      if (err.message && (err.message.includes('404') || err.message.includes('Cannot POST'))) {
+        return await this.updateOrderStatus(orderId, 'preparing', 20);
+      }
+      throw err;
+    }
+  }
+
+  async confirmDriverPickup(orderId: string, driverName?: string) {
+    try {
+      return await this.request<{ success: boolean; message: string; data: any }>(`/delivery/orders/${orderId}/confirm-receipt`, {
+        method: 'POST',
+        body: JSON.stringify({ driverName }),
+      });
+    } catch (err: any) {
+      // Fallback for older backend versions without dedicated /delivery endpoint:
+      if (err.message && (err.message.includes('404') || err.message.includes('Cannot POST'))) {
+        return await this.updateOrderStatus(orderId, 'dispatched');
+      }
+      throw err;
+    }
   }
 
   async verifyDispatchPin(orderId: string, pin: string) {

@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE as string) || 'https://dd-restaurants-app.onrender.com/api/v1';
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? '/api/v1' : 'https://dd-restaurants-app.onrender.com/api/v1');
 
 export class ApiError extends Error {
   constructor(public message: string, public status?: number) {
@@ -100,6 +100,21 @@ export const adminApi = {
     return request<{ success: boolean; message: string }>(`/admin/restaurants/${restaurantId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    });
+  },
+
+  // Live Orders Monitor & Driver Handover
+  getOrders: async (params?: { restaurantId?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.restaurantId) query.append('restaurantId', params.restaurantId);
+    if (params?.status) query.append('status', params.status);
+    return request<{ success: boolean; data: any[]; counts: Record<string, number> }>(`/admin/orders?${query.toString()}`);
+  },
+
+  confirmDriverPickup: async (orderId: string, driverName?: string) => {
+    return request<{ success: boolean; message: string; data: any }>(`/admin/orders/${orderId}/confirm-driver-pickup`, {
+      method: 'POST',
+      body: JSON.stringify({ driverName }),
     });
   },
 

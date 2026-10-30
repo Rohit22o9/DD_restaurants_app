@@ -165,7 +165,7 @@ export const Restaurants: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
-          {['all', 'active', 'pending_invitation', 'suspended'].map(status => (
+          {['all', 'online', 'active', 'pending_invitation', 'suspended'].map(status => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -175,7 +175,7 @@ export const Restaurants: React.FC = () => {
                   : 'bg-white border border-brand-mint-border text-brand-muted hover:bg-brand-mint-subtle'
               }`}
             >
-              {status.replace('_', ' ')}
+              {status === 'online' ? '🟢 Online Now' : status.replace('_', ' ')}
             </button>
           ))}
         </div>
@@ -213,7 +213,14 @@ export const Restaurants: React.FC = () => {
                   <tr key={r.id} className="hover:bg-brand-mint-subtle/40 transition-colors">
                     {/* Restaurant Info */}
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-brand-dark">{r.name}</div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-bold text-brand-dark">{r.name}</span>
+                        {r.isOnline && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-extrabold bg-emerald-100 text-emerald-800">
+                            🟢 Online
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-brand-muted font-mono">{r.code}</div>
                     </td>
 
@@ -230,33 +237,52 @@ export const Restaurants: React.FC = () => {
                       </div>
                     </td>
 
-                    {/* Status Badge */}
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                          r.status === 'active'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : r.status === 'pending_invitation'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {r.status === 'active' && 'Active'}
-                        {r.status === 'pending_invitation' && 'Pending Invite'}
-                        {r.status === 'suspended' && 'Suspended'}
-                      </span>
+                    {/* Status & Online Presence Badge */}
+                    <td className="py-3.5 px-4 space-y-1">
+                      <div>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                            r.status === 'active'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : r.status === 'pending_invitation'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {r.status === 'active' && 'Active'}
+                          {r.status === 'pending_invitation' && 'Pending Invite'}
+                          {r.status === 'suspended' && 'Suspended'}
+                        </span>
+                      </div>
+                      <div>
+                        {r.isOnline ? (
+                          <span className="text-[10px] font-bold text-emerald-700 flex items-center space-x-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                            <span>Logged In (Active)</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-brand-muted">App Offline</span>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Pending Update Count */}
-                    <td className="py-3.5 px-4">
+                    {/* Active Orders & Pending Updates */}
+                    <td className="py-3.5 px-4 space-y-1">
+                      {r.activeOrdersCount > 0 && (
+                        <div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-forest text-white">
+                            {r.activeOrdersCount} active orders
+                          </span>
+                        </div>
+                      )}
                       {r.pendingUpdateCount > 0 ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          {r.pendingUpdateCount} pending
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          {r.pendingUpdateCount} pending updates
                         </span>
                       ) : (
-                        <span className="text-[11px] text-emerald-700 font-semibold flex items-center space-x-1">
+                        <span className="text-[10px] text-emerald-700 font-semibold flex items-center space-x-1">
                           <CheckCircle2 className="w-3 h-3" />
-                          <span>All Clear</span>
+                          <span>Updates Clear</span>
                         </span>
                       )}
                     </td>

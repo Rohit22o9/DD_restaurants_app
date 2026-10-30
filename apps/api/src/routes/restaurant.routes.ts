@@ -574,6 +574,10 @@ restaurantRouter.get('/orders', (req: AuthenticatedRequest, res) => {
   const restaurantId = req.restaurant!.id;
   const statusFilter = req.query.status as string;
 
+  // Touch restaurant live presence / online heartbeat
+  const now = new Date().toISOString();
+  db.run(`UPDATE restaurants SET is_online = 1, last_active_at = ? WHERE id = ?`, [now, restaurantId]);
+
   let sql = `SELECT * FROM orders WHERE restaurant_id = ?`;
   const params: any[] = [restaurantId];
 
@@ -591,9 +595,25 @@ restaurantRouter.get('/orders', (req: AuthenticatedRequest, res) => {
     customerName: r.customer_name,
     customerPhone: r.customer_phone,
     deliverySlot: r.delivery_slot,
+    deliveryDate: r.delivery_date || 'Today, Oct 30',
+    handoverTime: r.handover_time || (
+      r.delivery_slot?.includes('12:30 PM') ? '12:15 PM' :
+      r.delivery_slot?.includes('12:45 PM') ? '12:30 PM' :
+      r.delivery_slot?.includes('01:00 PM') ? '12:45 PM' :
+      r.delivery_slot?.includes('11:30 AM') ? '11:15 AM' :
+      '12:15 PM'
+    ),
     status: r.status,
     prepTimeMins: r.prep_time_mins,
-    items: JSON.parse(r.items_json || '[]'),
+    items: JSON.parse(r.items_json || '[]').map((it: any) => ({
+      name: it.name,
+      quantity: Number(it.quantity ?? it.qty ?? 1),
+      qty: Number(it.qty ?? it.quantity ?? 1),
+      price: Number(it.price) || 0,
+      dietary: it.dietary || 'Veg',
+      notes: it.notes || it.portion || '',
+      portion: it.portion || '',
+    })),
     subtotal: r.subtotal,
     tax: r.tax,
     totalAmount: r.total_amount,
@@ -604,6 +624,8 @@ restaurantRouter.get('/orders', (req: AuthenticatedRequest, res) => {
     riderStatus: r.rider_status,
     riderEtaMins: r.rider_eta_mins,
     dispatchPin: r.dispatch_pin,
+    acknowledgedAt: r.acknowledged_at,
+    driverConfirmedAt: r.driver_confirmed_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
@@ -622,6 +644,49 @@ restaurantRouter.get('/orders', (req: AuthenticatedRequest, res) => {
     success: true,
     data: formatted,
     counts,
+  });
+});
+
+// POST /api/v1/restaurant/heartbeat
+restaurantRouter.post('/heartbeat', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const now = new Date().toISOString();
+  db.run(`UPDATE restaurants SET is_online = 1, last_active_at = ? WHERE id = ?`, [now, restaurantId]);
+  res.json({ success: true, timestamp: now });
+});
+
+// POST /api/v1/restaurant/orders/:id/acknowledge
+restaurantRouter.post('/orders/:id/acknowledge', (req: AuthenticatedRequest, res) => {
+  const restaurantId = req.restaurant!.id;
+  const { id } = req.params;
+  const order = db.queryOne<any>(`SELECT * FROM orders WHERE id = ? AND restaurant_id = ?`, [id, restaurantId]);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  const now = new Date().toISOString();
+  db.run(
+    `UPDATE orders 
+     SET status = 'preparing', 
+         acknowledged_at = COALESCE(acknowledged_at, ?), 
+         updated_at = ? 
+     WHERE id = ?`,
+    [now, now, id]
+  );
+
+  AuditService.log({
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    action: 'ORDER_ACKNOWLEDGED',
+    resourceType: 'order',
+    resourceId: id,
+    payload: { orderNumber: order.order_number, acknowledgedAt: now },
+  });
+
+  res.json({
+    success: true,
+    message: `Order ${order.order_number} acknowledged and sent to kitchen prep!`,
+    data: { id, status: 'preparing', acknowledgedAt: now },
   });
 });
 
@@ -651,9 +716,10 @@ restaurantRouter.patch('/orders/:id/status', (req: AuthenticatedRequest, res) =>
            WHEN ? = 'dispatched' THEN 'picked_up' 
            ELSE rider_status 
          END,
+         acknowledged_at = CASE WHEN ? = 'preparing' AND acknowledged_at IS NULL THEN ? ELSE acknowledged_at END,
          updated_at = ? 
      WHERE id = ?`,
-    [status, prepTimeMins, status, status, now, id]
+    [status, prepTimeMins ?? null, status, status, status, now, now, id]
   );
 
   AuditService.log({
@@ -671,8 +737,15 @@ restaurantRouter.patch('/orders/:id/status', (req: AuthenticatedRequest, res) =>
     message: `Order ${updated.order_number} marked as ${status}`,
     data: {
       ...updated,
-      items: JSON.parse(updated.items_json || '[]')
-    }
+      items: JSON.parse(updated.items_json || '[]').map((it: any) => ({
+        name: it.name,
+        quantity: Number(it.quantity ?? it.qty ?? 1),
+        qty: Number(it.qty ?? it.quantity ?? 1),
+        price: Number(it.price) || 0,
+        dietary: it.dietary || 'Veg',
+        notes: it.notes || it.portion || '',
+      })),
+    },
   });
 });
 

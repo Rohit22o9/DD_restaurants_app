@@ -4,6 +4,7 @@ import { config } from './config';
 import { authRouter } from './routes/auth.routes';
 import { adminRouter } from './routes/admin.routes';
 import { restaurantRouter } from './routes/restaurant.routes';
+import { deliveryRouter } from './routes/delivery.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { scheduler } from './services/schedulerService';
 import { runSeed } from './db/seed';
@@ -33,6 +34,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/restaurant', restaurantRouter);
+app.use('/api/v1/delivery', deliveryRouter);
 
 // Centralized Error Handler
 app.use(errorHandler);

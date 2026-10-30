@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Store, Send, BellRing, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Store, Send, BellRing, PlusCircle, ShoppingBag } from 'lucide-react';
 
 interface SidebarProps {
   currentTab: string;
@@ -9,6 +9,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabChange }) => {
   const navItems = [
     { id: 'dashboard', label: 'Admin Dashboard', icon: LayoutDashboard },
+    { id: 'orders', label: 'Live Orders Monitor', icon: ShoppingBag },
     { id: 'restaurants', label: 'Restaurant Partners', icon: Store },
     { id: 'updates', label: 'Update Broadcasts', icon: BellRing },
     { id: 'create-update', label: 'Create New Update', icon: PlusCircle, isHighlight: true },

@@ -17,48 +17,85 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { mobileApi } from '../services/api';
+import { storage } from '../services/storage';
 
 interface LiveOrdersScreenProps {
   navigation: any;
   user?: any;
   restaurant?: any;
+  onLogout?: () => void;
 }
 
 export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
   navigation,
   user,
   restaurant,
+  onLogout,
 }) => {
   const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState<any[]>([]);
   const [counts, setCounts] = useState({ incoming: 0, preparing: 0, ready: 0, dispatched: 0, total: 0 });
-  const [activeTab, setActiveTab] = useState<'incoming' | 'preparing' | 'ready' | 'dispatched'>('incoming');
+  const [activeTab, setActiveTab] = useState<'all_active' | 'incoming' | 'preparing' | 'ready' | 'dispatched'>('all_active');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [soundAlertEnabled, setSoundAlertEnabled] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Dispatch PIN Modal state
+  // 1. Popup Window for Incoming Order Acknowledgment
+  const [ackModalOrder, setAckModalOrder] = useState<any | null>(null);
+  const acknowledgedIdsRef = useRef<Set<string>>(new Set());
+
+  // 2. Real-time Driver Pickup Toast Notification
+  const [driverPickupBanner, setDriverPickupBanner] = useState<{
+    orderNumber: string;
+    riderName: string;
+    timestamp: string;
+  } | null>(null);
+  const prevOrdersStatusMapRef = useRef<Record<string, string>>({});
+
+  // 3. Fallback PIN Verification Modal (optional)
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [selectedOrderForPin, setSelectedOrderForPin] = useState<any | null>(null);
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
 
-  const prevIncomingCountRef = useRef(0);
-
   const fetchOrders = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-      const res = await mobileApi.getOrders(activeTab);
-      setOrders(res.data || []);
+      const res = await mobileApi.getOrders('all');
+      const orderList: any[] = res.data || [];
+      setOrders(orderList);
+
       if (res.counts) {
-        // Trigger kitchen ring if new incoming order appeared
-        if (soundAlertEnabled && res.counts.incoming > prevIncomingCountRef.current && prevIncomingCountRef.current !== 0) {
-          triggerKitchenAlert();
-        }
-        prevIncomingCountRef.current = res.counts.incoming;
         setCounts(res.counts);
       }
+
+      // Detect any incoming unacknowledged order and pop acknowledgment window
+      const unackIncoming = orderList.filter(
+        (o) => o.status === 'incoming' && !acknowledgedIdsRef.current.has(o.id)
+      );
+      if (unackIncoming.length > 0 && !ackModalOrder) {
+        setAckModalOrder(unackIncoming[0]);
+        if (soundAlertEnabled) {
+          Vibration.vibrate([0, 500, 200, 500]);
+        }
+      }
+
+      // Detect Driver Pickup Handover confirmation in real-time
+      orderList.forEach((o) => {
+        const prevStatus = prevOrdersStatusMapRef.current[o.id];
+        if (prevStatus === 'ready' && o.status === 'dispatched') {
+          // Driver confirmed receipt! Notify restaurant immediately!
+          setDriverPickupBanner({
+            orderNumber: o.orderNumber,
+            riderName: o.riderName || 'Assigned Driver',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+          Vibration.vibrate([0, 250, 150, 250]);
+          setTimeout(() => setDriverPickupBanner(null), 8000);
+        }
+        prevOrdersStatusMapRef.current[o.id] = o.status;
+      });
     } catch (err: any) {
       console.warn('Error fetching orders:', err.message);
     } finally {
@@ -67,42 +104,108 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
     }
   };
 
-  const triggerKitchenAlert = () => {
-    // Vibrate phone pattern: [wait, vibrate, wait, vibrate]
-    Vibration.vibrate([0, 600, 250, 600, 250, 1000]);
-    Alert.alert(
-      '🔔 NEW ORDER RECEIVED!',
-      'You have an incoming order requiring kitchen preparation. Please accept now.',
-      [{ text: 'View Order', onPress: () => setActiveTab('incoming') }]
-    );
-  };
-
   useEffect(() => {
     fetchOrders();
-    // Auto-poll orders every 10 seconds for live updates
+    // Auto-poll orders every 8 seconds for live kitchen display & real-time driver updates
     const interval = setInterval(() => {
       fetchOrders(true);
-    }, 10000);
+      mobileApi.sendHeartbeat();
+    }, 8000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchOrders();
-  }, [activeTab]);
+  }, []);
 
+  // 1-Tap Order Acknowledgment via Popup Window
+  const handleAcknowledgeOrder = async (orderId: string) => {
+    try {
+      setActionLoading(orderId);
+      await mobileApi.acknowledgeOrder(orderId);
+      acknowledgedIdsRef.current.add(orderId);
+      setAckModalOrder(null);
+      Vibration.vibrate(120);
+
+      await fetchOrders(true);
+
+      // Check if another unacknowledged incoming order exists
+      const remaining = orders.filter(
+        (o) => o.status === 'incoming' && o.id !== orderId && !acknowledgedIdsRef.current.has(o.id)
+      );
+      if (remaining.length > 0) {
+        setAckModalOrder(remaining[0]);
+      } else {
+        setActiveTab('preparing');
+      }
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Could not acknowledge order');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // General Status Update (e.g. food ready)
   const handleUpdateStatus = async (orderId: string, nextStatus: string) => {
     try {
       setActionLoading(orderId);
       await mobileApi.updateOrderStatus(orderId, nextStatus);
       await fetchOrders(true);
     } catch (err: any) {
-      Alert.alert('Action Failed', err.message);
+      Alert.alert('Action Failed', err.message || 'Could not update order status');
     } finally {
       setActionLoading(null);
     }
   };
 
+  // Driver Confirmation Action (Simulated or 1-tap confirmation with immediate restaurant notification)
+  const handleDriverConfirmPickup = async (orderId: string, driverName?: string) => {
+    try {
+      setActionLoading(orderId);
+      await mobileApi.confirmDriverPickup(orderId, driverName);
+      const targetOrder = orders.find((o) => o.id === orderId);
+      setDriverPickupBanner({
+        orderNumber: targetOrder?.orderNumber || '#DD',
+        riderName: driverName || targetOrder?.riderName || 'Driver',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+      Vibration.vibrate([0, 200, 100, 200]);
+      setTimeout(() => setDriverPickupBanner(null), 8000);
+      await fetchOrders(true);
+      setActiveTab('dispatched');
+    } catch (err: any) {
+      Alert.alert('Handover Failed', err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Logout handler
+  const handleLogoutConfirm = () => {
+    Alert.alert(
+      'Sign Out of Kitchen Account',
+      `Are you sure you want to log out of ${restaurant?.name || 'Kitchen Partner'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await mobileApi.logout();
+            } catch (e) {}
+            await storage.clearAuth();
+            if (onLogout) {
+              onLogout();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Fallback PIN Modal handlers
   const openPinModal = (order: any) => {
     setSelectedOrderForPin(order);
     setEnteredPin('');
@@ -129,7 +232,11 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
     }
   };
 
+  // Filter orders based on active tab
   const filteredOrders = orders.filter((o) => {
+    if (activeTab === 'all_active') {
+      return ['incoming', 'preparing', 'ready'].includes(o.status);
+    }
     if (activeTab === 'incoming') return o.status === 'incoming';
     if (activeTab === 'preparing') return o.status === 'preparing';
     if (activeTab === 'ready') return o.status === 'ready';
@@ -137,19 +244,43 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
     return true;
   });
 
+  const totalActiveCount = counts.incoming + counts.preparing + counts.ready;
+
   return (
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
-      {/* Top Header Bar */}
+      {/* Real-time Driver Pickup Toast Notification Banner */}
+      {driverPickupBanner && (
+        <View style={styles.driverPickupToast}>
+          <View style={styles.driverPickupToastLeft}>
+            <View style={styles.driverPickupToastIcon}>
+              <Ionicons name="checkmark-done-circle" size={24} color="#047857" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.driverPickupToastTitle}>DRIVER RECEIPT CONFIRMED</Text>
+              <Text style={styles.driverPickupToastSub}>
+                Driver {driverPickupBanner.riderName} confirmed pickup of Order {driverPickupBanner.orderNumber} at {driverPickupBanner.timestamp}. Food handed over!
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => setDriverPickupBanner(null)} style={{ padding: 4 }}>
+            <Ionicons name="close" size={18} color="#047857" />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Top Header Bar with Prominent LOGOUT Button & Restaurant Name */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.liveIndicatorRow}>
             <View style={styles.pulseDot} />
             <Text style={styles.liveBadgeText}>LIVE KDS</Text>
+            <Text style={styles.restoBadgeText}>• {restaurant?.name || 'Gulati Restaurant'}</Text>
           </View>
           <Text style={styles.headerTitle}>Kitchen Orders</Text>
         </View>
 
         <View style={styles.headerRight}>
+          {/* Sound Alert Toggle */}
           <TouchableOpacity
             style={[styles.audioToggleBtn, soundAlertEnabled && styles.audioToggleActive]}
             onPress={() => {
@@ -159,40 +290,58 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
               }
             }}
             activeOpacity={0.8}
+            accessibilityLabel="Toggle Sound"
           >
             <Ionicons
               name={soundAlertEnabled ? 'volume-high' : 'volume-mute'}
-              size={18}
+              size={16}
               color={soundAlertEnabled ? COLORS.white : COLORS.muted}
             />
             <Text style={[styles.audioToggleText, soundAlertEnabled && styles.audioToggleTextActive]}>
               {soundAlertEnabled ? 'Sound ON' : 'Muted'}
             </Text>
           </TouchableOpacity>
+
+          {/* Prominent Log Out Button */}
+          <TouchableOpacity
+            style={styles.headerLogoutBtn}
+            onPress={handleLogoutConfirm}
+            activeOpacity={0.8}
+            accessibilityLabel="Sign out"
+          >
+            <Ionicons name="log-out-outline" size={16} color="#DC2626" />
+            <Text style={styles.headerLogoutText}>Log Out</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Incoming Order Alert Banner (if any unaccepted order) */}
-      {counts.incoming > 0 && activeTab !== 'incoming' && (
-        <TouchableOpacity
-          style={styles.incomingBanner}
-          onPress={() => setActiveTab('incoming')}
-          activeOpacity={0.9}
-        >
-          <View style={styles.incomingBannerLeft}>
-            <Ionicons name="notifications" size={20} color={COLORS.urgent} />
-            <Text style={styles.incomingBannerText}>
-              {counts.incoming} NEW {counts.incoming === 1 ? 'ORDER' : 'ORDERS'} AWAITING ACCEPTANCE!
-            </Text>
-          </View>
-          <View style={styles.incomingBannerBadge}>
-            <Text style={styles.incomingBannerAction}>VIEW NOW →</Text>
-          </View>
-        </TouchableOpacity>
-      )}
+      {/* Prominent Handover Schedule Banner (Active orders against handover cutoff) */}
+      <View style={styles.scheduleHeaderBar}>
+        <View style={styles.scheduleHeaderBarLeft}>
+          <Ionicons name="time" size={18} color="#991B1B" />
+          <Text style={styles.scheduleHeaderTitle}>DELIVERY HANDOVER SCHEDULE</Text>
+        </View>
+        <View style={styles.scheduleHeaderCountBadge}>
+          <Text style={styles.scheduleHeaderCountText}>
+            {totalActiveCount} Active {totalActiveCount === 1 ? 'Order' : 'Orders'} Today
+          </Text>
+        </View>
+      </View>
 
       {/* Pipeline Status Tabs */}
       <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'all_active' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('all_active')}
+        >
+          <Text style={[styles.tabLabel, activeTab === 'all_active' && styles.tabLabelActive]}>All Active</Text>
+          {totalActiveCount > 0 && (
+            <View style={[styles.tabBadge, activeTab === 'all_active' ? styles.tabBadgeActiveTotal : styles.tabBadgeInactive]}>
+              <Text style={styles.tabBadgeText}>{totalActiveCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'incoming' && styles.tabBtnActive]}
           onPress={() => setActiveTab('incoming')}
@@ -234,6 +383,11 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
           onPress={() => setActiveTab('dispatched')}
         >
           <Text style={[styles.tabLabel, activeTab === 'dispatched' && styles.tabLabelActive]}>Done</Text>
+          {counts.dispatched > 0 && (
+            <View style={[styles.tabBadge, styles.tabBadgeInactive]}>
+              <Text style={[styles.tabBadgeText, { color: '#6B7280' }]}>{counts.dispatched}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -268,18 +422,20 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
               />
             </View>
             <Text style={styles.emptyTitle}>
-              {activeTab === 'incoming'
-                ? 'All caught up!'
+              {activeTab === 'all_active'
+                ? 'No Active Orders'
+                : activeTab === 'incoming'
+                ? 'No Incoming Orders'
                 : activeTab === 'preparing'
-                ? 'No orders cooking right now'
+                ? 'Kitchen Station Clear'
                 : activeTab === 'ready'
-                ? 'No food waiting for pickup'
-                : 'No dispatched orders yet'}
+                ? 'No Orders Awaiting Rider'
+                : 'No Completed Orders'}
             </Text>
             <Text style={styles.emptySubtitle}>
-              {activeTab === 'incoming'
-                ? 'New orders will ring continuously when placed by customers.'
-                : 'Accept incoming orders to move them to the prep station.'}
+              {activeTab === 'all_active' || activeTab === 'incoming'
+                ? 'New orders will automatically pop up in a prominent alert window.'
+                : 'Orders in kitchen preparation will appear here.'}
             </Text>
           </View>
         ) : (
@@ -288,7 +444,32 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
 
             return (
               <View key={order.id} style={styles.orderCard}>
-                {/* Order Card Header */}
+                {/* 1. PROMINENT DELIVERY DATE & HANDOVER TIME BANNER */}
+                <View style={styles.prominentHandoverBox}>
+                  <View style={styles.handoverLeft}>
+                    <View style={styles.alarmBadge}>
+                      <Ionicons name="alarm" size={20} color="#FFFFFF" />
+                    </View>
+                    <View>
+                      <Text style={styles.handoverTagline}>HANDOVER TO DRIVER BY</Text>
+                      <Text style={styles.handoverBigTime}>
+                        {order.handoverTime || '12:15 PM'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.handoverRight}>
+                    <View style={styles.deliveryDatePill}>
+                      <Ionicons name="calendar" size={12} color="#1E3A8A" />
+                      <Text style={styles.deliveryDateText}>
+                        {order.deliveryDate || 'Today, Oct 30'}
+                      </Text>
+                    </View>
+                    <Text style={styles.deliverySlotSubText}>{order.deliverySlot}</Text>
+                  </View>
+                </View>
+
+                {/* 2. Order ID & Customer Header */}
                 <View style={styles.orderCardHeader}>
                   <View>
                     <View style={styles.orderIdRow}>
@@ -328,31 +509,30 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                       </View>
                     </View>
                     <Text style={styles.customerName}>
-                      {order.customerName} • {order.customerPhone || 'Online'}
+                      {order.customerName} • {order.customerPhone || 'Online Prepaid'}
                     </Text>
-                  </View>
-
-                  <View style={styles.slotBadge}>
-                    <Ionicons name="time-outline" size={14} color={COLORS.forest} />
-                    <Text style={styles.slotBadgeText}>{order.deliverySlot}</Text>
                   </View>
                 </View>
 
-                {/* Ordered Items Breakdown */}
+                {/* 3. Ordered Items Breakdown with robust quantity & price handling */}
                 <View style={styles.itemsBox}>
                   <Text style={styles.itemsBoxTitle}>ITEMS TO PREPARE ({order.items?.length || 0})</Text>
-                  {order.items?.map((item: any, idx: number) => (
-                    <View key={idx} style={styles.itemRow}>
-                      <View style={styles.itemQuantityBadge}>
-                        <Text style={styles.itemQuantityText}>{item.quantity}x</Text>
+                  {order.items?.map((item: any, idx: number) => {
+                    const qty = Number(item.quantity ?? item.qty ?? 1);
+                    const price = Number(item.price) || 0;
+                    return (
+                      <View key={idx} style={styles.itemRow}>
+                        <View style={styles.itemQuantityBadge}>
+                          <Text style={styles.itemQuantityText}>{qty}x</Text>
+                        </View>
+                        <View style={styles.itemDetails}>
+                          <Text style={styles.itemName}>{item.name}</Text>
+                          {item.portion && <Text style={styles.itemPortion}>{item.portion}</Text>}
+                        </View>
+                        <Text style={styles.itemPrice}>₹{(price * qty).toFixed(0)}</Text>
                       </View>
-                      <View style={styles.itemDetails}>
-                        <Text style={styles.itemName}>{item.name}</Text>
-                        {item.portion && <Text style={styles.itemPortion}>{item.portion}</Text>}
-                      </View>
-                      <Text style={styles.itemPrice}>₹{(item.price * item.quantity).toFixed(0)}</Text>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
 
                 {/* Special Instructions (if any) */}
@@ -398,14 +578,14 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                 <View style={styles.cardFooter}>
                   <View style={styles.amountWrap}>
                     <Text style={styles.amountLabel}>Total Bill</Text>
-                    <Text style={styles.amountVal}>₹{order.totalAmount?.toFixed(0)}</Text>
+                    <Text style={styles.amountVal}>₹{(Number(order.totalAmount) || 0).toFixed(0)}</Text>
                   </View>
 
-                  {/* Dynamic Action Button based on current status */}
+                  {/* Incoming: 1-Click Accept */}
                   {order.status === 'incoming' && (
                     <TouchableOpacity
                       style={[styles.primaryActionBtn, styles.acceptBtn]}
-                      onPress={() => handleUpdateStatus(order.id, 'preparing')}
+                      onPress={() => handleAcknowledgeOrder(order.id)}
                       disabled={isLoadingThis}
                       activeOpacity={0.85}
                     >
@@ -420,6 +600,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                     </TouchableOpacity>
                   )}
 
+                  {/* In Prep: Food Ready */}
                   {order.status === 'preparing' && (
                     <TouchableOpacity
                       style={[styles.primaryActionBtn, styles.readyBtn]}
@@ -438,24 +619,36 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                     </TouchableOpacity>
                   )}
 
+                  {/* Ready: Driver Receipt Confirmation (Fast 1-tap or Driver app confirmation) */}
                   {order.status === 'ready' && (
-                    <TouchableOpacity
-                      style={[styles.primaryActionBtn, styles.dispatchBtn]}
-                      onPress={() => openPinModal(order)}
-                      disabled={isLoadingThis}
-                      activeOpacity={0.85}
-                    >
-                      {isLoadingThis ? (
-                        <ActivityIndicator color={COLORS.white} size="small" />
-                      ) : (
-                        <>
-                          <Ionicons name="key-outline" size={18} color={COLORS.white} />
-                          <Text style={styles.primaryActionBtnText}>Verify Dispatch PIN</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                    <View style={styles.readyActionsWrap}>
+                      <TouchableOpacity
+                        style={[styles.primaryActionBtn, styles.dispatchBtn]}
+                        onPress={() => handleDriverConfirmPickup(order.id, order.riderName)}
+                        disabled={isLoadingThis}
+                        activeOpacity={0.85}
+                      >
+                        {isLoadingThis ? (
+                          <ActivityIndicator color={COLORS.white} size="small" />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark-done" size={18} color={COLORS.white} />
+                            <Text style={styles.primaryActionBtnText}>Confirm Handed to Driver</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.pinSmallBtn}
+                        onPress={() => openPinModal(order)}
+                        accessibilityLabel="Enter PIN"
+                      >
+                        <Ionicons name="key-outline" size={16} color="#6B7280" />
+                      </TouchableOpacity>
+                    </View>
                   )}
 
+                  {/* Dispatched: Confirmed badge */}
                   {order.status === 'dispatched' && (
                     <View style={styles.completedTag}>
                       <Ionicons name="checkmark-done" size={16} color="#047857" />
@@ -469,7 +662,124 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         )}
       </ScrollView>
 
-      {/* Driver PIN Handover Verification Modal */}
+      {/* 4. POPUP WINDOW: ORDER ACKNOWLEDGMENT MODAL (Required by restaurant partner) */}
+      <Modal
+        visible={Boolean(ackModalOrder)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAckModalOrder(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.ackModalCard}>
+            {/* Header Alert Title */}
+            <View style={styles.ackHeader}>
+              <View style={styles.ackPulseWrap}>
+                <Ionicons name="notifications" size={24} color="#DC2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.ackAlertTitle}>NEW ORDER RECEIVED</Text>
+                <Text style={styles.ackAlertSub}>Please acknowledge to start preparation</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setAckModalOrder(null)}
+                style={styles.ackCloseIconBtn}
+              >
+                <Ionicons name="close" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Prominent Handover Box inside Popup */}
+            <View style={styles.ackHandoverHighlight}>
+              <View style={styles.ackHandoverLeft}>
+                <Ionicons name="alarm" size={22} color="#FFFFFF" />
+                <View>
+                  <Text style={styles.ackHandoverLabel}>HANDOVER TO DRIVER BY</Text>
+                  <Text style={styles.ackHandoverTimeText}>
+                    {ackModalOrder?.handoverTime || '12:15 PM'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.ackHandoverRight}>
+                <Text style={styles.ackHandoverDate}>{ackModalOrder?.deliveryDate || 'Today, Oct 30'}</Text>
+                <Text style={styles.ackDeliverySlotText}>{ackModalOrder?.deliverySlot}</Text>
+              </View>
+            </View>
+
+            {/* Order Info Row */}
+            <View style={styles.ackOrderInfoRow}>
+              <View>
+                <Text style={styles.ackOrderNumber}>{ackModalOrder?.orderNumber}</Text>
+                <Text style={styles.ackCustomerText}>
+                  {ackModalOrder?.customerName} • {ackModalOrder?.customerPhone || 'Online Prepaid'}
+                </Text>
+              </View>
+              <View style={styles.ackAmountBadge}>
+                <Text style={styles.ackAmountLabel}>BILL TOTAL</Text>
+                <Text style={styles.ackAmountValue}>
+                  ₹{(Number(ackModalOrder?.totalAmount) || 0).toFixed(0)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Ordered Items List */}
+            <View style={styles.ackItemsBox}>
+              <Text style={styles.ackItemsTitle}>
+                ITEMS TO PREPARE ({ackModalOrder?.items?.length || 0})
+              </Text>
+              <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={true}>
+                {ackModalOrder?.items?.map((item: any, idx: number) => {
+                  const qty = Number(item.quantity ?? item.qty ?? 1);
+                  const price = Number(item.price) || 0;
+                  return (
+                    <View key={idx} style={styles.ackItemRow}>
+                      <View style={styles.ackItemQtyBadge}>
+                        <Text style={styles.ackItemQtyText}>{qty}x</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.ackItemName}>{item.name}</Text>
+                        {item.portion && <Text style={styles.ackItemPortion}>{item.portion}</Text>}
+                      </View>
+                      <Text style={styles.ackItemPrice}>₹{(price * qty).toFixed(0)}</Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Customer Special Instructions */}
+            {ackModalOrder?.specialInstructions ? (
+              <View style={styles.ackNotesBox}>
+                <Ionicons name="chatbubble-ellipses" size={16} color="#B45309" />
+                <Text style={styles.ackNotesText}>
+                  <Text style={{ fontWeight: '700' }}>Customer Note: </Text>
+                  {ackModalOrder.specialInstructions}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* ONE-TAP PRIMARY ACTION: Acknowledge & Start Prep */}
+            <View style={styles.ackActionRow}>
+              <TouchableOpacity
+                style={styles.ackPrimaryBtn}
+                onPress={() => handleAcknowledgeOrder(ackModalOrder.id)}
+                disabled={Boolean(actionLoading)}
+                activeOpacity={0.85}
+              >
+                {actionLoading === ackModalOrder?.id ? (
+                  <ActivityIndicator color={COLORS.white} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={22} color={COLORS.white} />
+                    <Text style={styles.ackPrimaryBtnText}>Acknowledge & Start Prep</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 5. Driver PIN Handover Verification Modal (Optional Fallback) */}
       <Modal
         visible={pinModalVisible}
         transparent
@@ -489,7 +799,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
             </View>
 
             <Text style={styles.pinPrompt}>
-              Ask the delivery driver for their 4-digit Daily Drop dispatch PIN shown on their phone:
+              Enter the 4-digit Daily Drop dispatch PIN from the driver app screen:
             </Text>
 
             <TextInput
@@ -506,12 +816,11 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
               autoFocus
             />
 
-            {/* Test helper badge if in dev/demo */}
             {selectedOrderForPin?.dispatchPin && (
               <View style={styles.demoPinNotice}>
                 <Ionicons name="information-circle-outline" size={14} color="#6B7280" />
                 <Text style={styles.demoPinNoticeText}>
-                  Rider PIN for this test order is: <Text style={{ fontWeight: '700' }}>{selectedOrderForPin.dispatchPin}</Text>
+                  Rider PIN for this test order: <Text style={{ fontWeight: '700' }}>{selectedOrderForPin.dispatchPin}</Text>
                 </Text>
               </View>
             )}
@@ -588,6 +897,11 @@ const styles = StyleSheet.create({
     color: '#059669',
     letterSpacing: 0.8,
   },
+  restoBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -596,64 +910,82 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   audioToggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 16,
   },
   audioToggleActive: {
     backgroundColor: COLORS.forest,
   },
   audioToggleText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: COLORS.muted,
   },
   audioToggleTextActive: {
     color: COLORS.white,
   },
-  incomingBanner: {
+  headerLogoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  headerLogoutText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  scheduleHeaderBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderBottomWidth: 1,
-    borderBottomColor: '#FEE2E2',
+    backgroundColor: '#FFF1F2',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFE4E6',
   },
-  incomingBannerLeft: {
+  scheduleHeaderBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  incomingBannerText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.urgent,
-  },
-  incomingBannerBadge: {
-    backgroundColor: COLORS.urgent,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  incomingBannerAction: {
+  scheduleHeaderTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: COLORS.white,
+    color: '#991B1B',
+    letterSpacing: 0.5,
+  },
+  scheduleHeaderCountBadge: {
+    backgroundColor: '#991B1B',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  scheduleHeaderCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: COLORS.white,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
@@ -662,16 +994,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 3,
     borderBottomColor: 'transparent',
-    gap: 6,
+    gap: 4,
   },
   tabBtnActive: {
     borderBottomColor: COLORS.forest,
   },
   tabLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6B7280',
   },
@@ -680,15 +1012,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   tabBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
   tabBadgeInactive: {
     backgroundColor: '#E5E7EB',
+  },
+  tabBadgeActiveTotal: {
+    backgroundColor: COLORS.forest,
   },
   tabBadgeActiveUrgent: {
     backgroundColor: COLORS.urgent,
@@ -700,7 +1035,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#059669',
   },
   tabBadgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: COLORS.white,
   },
@@ -747,7 +1082,7 @@ const styles = StyleSheet.create({
   orderCard: {
     backgroundColor: COLORS.white,
     borderRadius: 14,
-    padding: 16,
+    padding: 14,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -757,11 +1092,69 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  prominentHandoverBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1.5,
+    borderColor: '#FDBA74',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  handoverLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  alarmBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EA580C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  handoverTagline: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#9A3412',
+    letterSpacing: 0.5,
+  },
+  handoverBigTime: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#9A3412',
+  },
+  handoverRight: {
+    alignItems: 'flex-end',
+    gap: 3,
+  },
+  deliveryDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  deliveryDateText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1E40AF',
+  },
+  deliverySlotSubText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#78350F',
+  },
   orderCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingBottom: 12,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -772,7 +1165,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   orderNumber: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: '#111827',
   },
@@ -814,25 +1207,11 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
   },
-  slotBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  slotBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.forest,
-  },
   itemsBox: {
-    marginTop: 12,
+    marginTop: 10,
     backgroundColor: '#F9FAFB',
     borderRadius: 10,
-    padding: 12,
+    padding: 10,
   },
   itemsBoxTitle: {
     fontSize: 10,
@@ -844,19 +1223,19 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   itemQuantityBadge: {
     width: 28,
-    height: 24,
+    height: 22,
     backgroundColor: '#E5E7EB',
-    borderRadius: 6,
+    borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   itemQuantityText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: '#111827',
   },
@@ -882,24 +1261,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#FFFBEB',
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
-    marginTop: 10,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: '#FDE68A',
   },
   instructionsText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#92400E',
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 15,
   },
   riderBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 10,
+    marginTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
   },
@@ -909,9 +1288,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   riderIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#E0F2FE',
     justifyContent: 'center',
     alignItems: 'center',
@@ -957,25 +1336,28 @@ const styles = StyleSheet.create({
   riderAssignedText: {
     fontSize: 11,
     color: '#6B7280',
+    fontWeight: '500',
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 12,
+    marginTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
   },
-  amountWrap: {},
+  amountWrap: {
+    justifyContent: 'center',
+  },
   amountLabel: {
     fontSize: 10,
-    color: '#9CA3AF',
     fontWeight: '600',
+    color: '#9CA3AF',
   },
   amountVal: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '900',
     color: '#111827',
   },
   primaryActionBtn: {
@@ -985,6 +1367,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
+    justifyContent: 'center',
   },
   acceptBtn: {
     backgroundColor: COLORS.forest,
@@ -993,34 +1376,289 @@ const styles = StyleSheet.create({
     backgroundColor: '#D97706',
   },
   dispatchBtn: {
-    backgroundColor: '#059669',
+    backgroundColor: '#047857',
   },
   primaryActionBtnText: {
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.white,
   },
+  readyActionsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pinSmallBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   completedTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#D1FAE5',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
   },
   completedTagText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#047857',
   },
-  modalOverlay: {
+  driverPickupToast: {
+    margin: 12,
+    marginBottom: 0,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1.5,
+    borderColor: '#A7F3D0',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  driverPickupToastLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  driverPickupToastIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#D1FAE5',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
+  driverPickupToastTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#065F46',
+    letterSpacing: 0.5,
+  },
+  driverPickupToastSub: {
+    fontSize: 11,
+    color: '#047857',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  // Modal Overlays
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  ackModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  ackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  ackPulseWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ackAlertTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#DC2626',
+    letterSpacing: 0.5,
+  },
+  ackAlertSub: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+  ackCloseIconBtn: {
+    padding: 6,
+  },
+  ackHandoverHighlight: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#7F1D1D',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  ackHandoverLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  ackHandoverLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FECACA',
+    letterSpacing: 0.5,
+  },
+  ackHandoverTimeText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  ackHandoverRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  ackHandoverDate: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  ackDeliverySlotText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FCA5A5',
+  },
+  ackOrderInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    marginBottom: 10,
+  },
+  ackOrderNumber: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+  },
+  ackCustomerText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+  ackAmountBadge: {
+    alignItems: 'flex-end',
+  },
+  ackAmountLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#9CA3AF',
+  },
+  ackAmountValue: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#111827',
+  },
+  ackItemsBox: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  ackItemsTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#9CA3AF',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  ackItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  ackItemQtyBadge: {
+    width: 26,
+    height: 22,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  ackItemQtyText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  ackItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  ackItemPortion: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  ackItemPrice: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  ackNotesBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  ackNotesText: {
+    fontSize: 11,
+    color: '#92400E',
+    flex: 1,
+    lineHeight: 15,
+  },
+  ackActionRow: {
+    marginTop: 4,
+  },
+  ackPrimaryBtn: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.forest,
+    paddingVertical: 14,
+    borderRadius: 12,
+    shadowColor: COLORS.forest,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  ackPrimaryBtnText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 0.5,
+  },
+  // PIN Verification Modal Styles
   modalCard: {
     width: '100%',
     maxWidth: 380,
@@ -1028,7 +1666,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 8,
@@ -1060,32 +1698,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#4B5563',
     textAlign: 'center',
-    lineHeight: 18,
     marginBottom: 16,
+    lineHeight: 18,
   },
   pinInput: {
-    height: 56,
+    backgroundColor: '#F9FAFB',
     borderWidth: 2,
-    borderColor: COLORS.forest,
+    borderColor: '#D1D5DB',
     borderRadius: 12,
+    paddingVertical: 12,
     fontSize: 28,
     fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 14,
-    color: COLORS.forest,
-    backgroundColor: '#F9FAFB',
-    marginBottom: 10,
+    letterSpacing: 16,
+    color: '#111827',
+    marginBottom: 12,
   },
   demoPinNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: '#F3F4F6',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    marginBottom: 10,
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 12,
   },
   demoPinNoticeText: {
     fontSize: 11,
@@ -1095,16 +1732,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FEE2E2',
-    padding: 8,
-    borderRadius: 6,
+    backgroundColor: '#FEF2F2',
+    padding: 10,
+    borderRadius: 8,
     marginBottom: 12,
   },
   pinErrorText: {
     fontSize: 12,
-    color: '#DC2626',
+    color: COLORS.urgent,
     fontWeight: '600',
-    flex: 1,
   },
   modalButtonsRow: {
     flexDirection: 'row',

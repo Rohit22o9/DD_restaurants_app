@@ -48,6 +48,7 @@ const upload = multer({
 adminRouter.get('/dashboard/metrics', (req, res) => {
   const totalRestaurants = db.queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM restaurants`)?.count || 0;
   const activePartners = db.queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM restaurants WHERE status = 'active'`)?.count || 0;
+  const onlineRestaurants = db.queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM restaurants WHERE is_online = 1`)?.count || 0;
   const updatesPublished = db.queryOne<{ count: number }>(`SELECT COUNT(*) as count FROM updates WHERE status = 'published'`)?.count || 0;
 
   const updatesAwaitingResponses = db.queryOne<{ count: number }>(
@@ -63,6 +64,34 @@ adminRouter.get('/dashboard/metrics', (req, res) => {
        AND (u.priority = 'urgent' OR (u.deadline_at IS NOT NULL AND u.deadline_at < ?))`,
     [now]
   )?.count || 0;
+
+  // Live Orders Breakdown & Recent Orders
+  const allOrders = db.query<any>(`SELECT status FROM orders`);
+  const ordersByStatus = {
+    incoming: allOrders.filter(o => o.status === 'incoming').length,
+    preparing: allOrders.filter(o => o.status === 'preparing').length,
+    ready: allOrders.filter(o => o.status === 'ready').length,
+    dispatched: allOrders.filter(o => o.status === 'dispatched').length,
+    total: allOrders.length,
+    active: allOrders.filter(o => ['incoming', 'preparing', 'ready'].includes(o.status)).length,
+  };
+
+  const recentOrdersRows = db.query<any>(
+    `SELECT o.*, r.name as restaurant_name, r.code as restaurant_code, r.is_online as restaurant_is_online
+     FROM orders o
+     JOIN restaurants r ON o.restaurant_id = r.id
+     ORDER BY o.created_at DESC
+     LIMIT 10`
+  );
+
+  const activeRestaurantsList = db.query<any>(
+    `SELECT r.id, r.name, r.code, r.owner_name, r.email, r.phone, r.is_online, r.last_active_at,
+       (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND o.status IN ('incoming', 'preparing', 'ready')) as active_orders_count
+     FROM restaurants r
+     WHERE r.is_online = 1 OR r.status = 'active'
+     ORDER BY r.is_online DESC, r.name ASC
+     LIMIT 8`
+  );
 
   // Recent Activity
   const recentResponses = db.query<any>(
@@ -89,9 +118,46 @@ adminRouter.get('/dashboard/metrics', (req, res) => {
     data: {
       totalRestaurants,
       activePartners,
+      onlineRestaurants,
       updatesPublished,
       updatesAwaitingResponses,
       urgentOrOverdueResponses,
+      ordersByStatus,
+      activeRestaurantsList: activeRestaurantsList.map(r => ({
+        id: r.id,
+        name: r.name,
+        code: r.code,
+        ownerName: r.owner_name,
+        email: r.email,
+        phone: r.phone,
+        isOnline: Boolean(r.is_online),
+        lastActiveAt: r.last_active_at,
+        activeOrdersCount: r.active_orders_count,
+      })),
+      recentOrders: recentOrdersRows.map(o => ({
+        id: o.id,
+        orderNumber: o.order_number,
+        restaurantName: o.restaurant_name,
+        restaurantCode: o.restaurant_code,
+        restaurantIsOnline: Boolean(o.restaurant_is_online),
+        customerName: o.customer_name,
+        deliverySlot: o.delivery_slot,
+        deliveryDate: o.delivery_date || 'Today, Oct 30',
+        handoverTime: o.handover_time || (
+          o.delivery_slot?.includes('12:30 PM') ? '12:15 PM' :
+          o.delivery_slot?.includes('12:45 PM') ? '12:30 PM' :
+          o.delivery_slot?.includes('01:00 PM') ? '12:45 PM' :
+          o.delivery_slot?.includes('11:30 AM') ? '11:15 AM' :
+          '12:15 PM'
+        ),
+        status: o.status,
+        totalAmount: o.total_amount,
+        itemsCount: JSON.parse(o.items_json || '[]').length,
+        riderName: o.rider_name,
+        riderStatus: o.rider_status,
+        riderEtaMins: o.rider_eta_mins,
+        driverConfirmedAt: o.driver_confirmed_at,
+      })),
       recentActivity: recentResponses.map(r => ({
         id: r.id,
         type: r.type,
@@ -121,6 +187,7 @@ adminRouter.get('/restaurants', (req, res) => {
   let sql = `
     SELECT r.*,
       (SELECT COUNT(*) FROM update_recipients ur WHERE ur.restaurant_id = r.id AND ur.status NOT IN ('response_submitted', 'response_reviewed')) as pending_update_count,
+      (SELECT COUNT(*) FROM orders o WHERE o.restaurant_id = r.id AND o.status IN ('incoming', 'preparing', 'ready')) as active_orders_count,
       (SELECT MAX(created_at) FROM audit_events ae WHERE ae.resource_id = r.id) as last_activity
     FROM restaurants r
     WHERE 1=1
@@ -134,11 +201,15 @@ adminRouter.get('/restaurants', (req, res) => {
   }
 
   if (status && status !== 'all') {
-    sql += ` AND r.status = ?`;
-    params.push(status);
+    if (status === 'online') {
+      sql += ` AND r.is_online = 1`;
+    } else {
+      sql += ` AND r.status = ?`;
+      params.push(status);
+    }
   }
 
-  sql += ` ORDER BY r.name ASC`;
+  sql += ` ORDER BY r.is_online DESC, r.name ASC`;
 
   const rows = db.query<any>(sql, params);
   res.json({
@@ -151,6 +222,9 @@ adminRouter.get('/restaurants', (req, res) => {
       email: r.email,
       phone: r.phone,
       status: r.status,
+      isOnline: Boolean(r.is_online),
+      lastActiveAt: r.last_active_at,
+      activeOrdersCount: r.active_orders_count || 0,
       address: r.address,
       notes: r.notes,
       dateJoined: r.date_joined,
@@ -744,4 +818,155 @@ adminRouter.patch('/updates/:id/responses/:responseId/review', (req: Authenticat
   });
 
   res.json({ success: true, message: 'Response marked as reviewed' });
+});
+
+// ==========================================
+// LIVE ORDERS MONITOR & DRIVER CONFIRMATION
+// ==========================================
+
+// GET /api/v1/admin/orders
+adminRouter.get('/orders', (req, res) => {
+  const { restaurantId, status } = req.query;
+
+  let sql = `
+    SELECT o.*, r.name as restaurant_name, r.code as restaurant_code, r.is_online as restaurant_is_online
+    FROM orders o
+    JOIN restaurants r ON o.restaurant_id = r.id
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+
+  if (restaurantId && restaurantId !== 'all') {
+    sql += ` AND o.restaurant_id = ?`;
+    params.push(restaurantId);
+  }
+
+  if (status && status !== 'all') {
+    sql += ` AND o.status = ?`;
+    params.push(status);
+  }
+
+  sql += ` ORDER BY o.created_at DESC`;
+
+  const rows = db.query<any>(sql, params);
+
+  const formatted = rows.map(r => ({
+    id: r.id,
+    restaurantId: r.restaurant_id,
+    restaurantName: r.restaurant_name,
+    restaurantCode: r.restaurant_code,
+    restaurantIsOnline: Boolean(r.restaurant_is_online),
+    orderNumber: r.order_number,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    deliverySlot: r.delivery_slot,
+    deliveryDate: r.delivery_date || 'Today, Oct 30',
+    handoverTime: r.handover_time || (
+      r.delivery_slot?.includes('12:30 PM') ? '12:15 PM' :
+      r.delivery_slot?.includes('12:45 PM') ? '12:30 PM' :
+      r.delivery_slot?.includes('01:00 PM') ? '12:45 PM' :
+      r.delivery_slot?.includes('11:30 AM') ? '11:15 AM' :
+      '12:15 PM'
+    ),
+    status: r.status,
+    prepTimeMins: r.prep_time_mins,
+    items: JSON.parse(r.items_json || '[]').map((it: any) => ({
+      name: it.name,
+      quantity: Number(it.quantity ?? it.qty ?? 1),
+      qty: Number(it.qty ?? it.quantity ?? 1),
+      price: Number(it.price) || 0,
+      dietary: it.dietary || 'Veg',
+      notes: it.notes || it.portion || '',
+    })),
+    subtotal: r.subtotal,
+    tax: r.tax,
+    totalAmount: r.total_amount,
+    paymentMethod: r.payment_method,
+    specialInstructions: r.special_instructions,
+    riderName: r.rider_name,
+    riderPhone: r.rider_phone,
+    riderStatus: r.rider_status,
+    riderEtaMins: r.rider_eta_mins,
+    dispatchPin: r.dispatch_pin,
+    acknowledgedAt: r.acknowledged_at,
+    driverConfirmedAt: r.driver_confirmed_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+
+  const allOrders = db.query<any>(`SELECT status FROM orders`);
+  const counts = {
+    all: allOrders.length,
+    incoming: allOrders.filter(o => o.status === 'incoming').length,
+    preparing: allOrders.filter(o => o.status === 'preparing').length,
+    ready: allOrders.filter(o => o.status === 'ready').length,
+    dispatched: allOrders.filter(o => o.status === 'dispatched').length,
+  };
+
+  res.json({
+    success: true,
+    data: formatted,
+    counts,
+  });
+});
+
+// POST /api/v1/admin/orders/:id/confirm-driver-pickup
+adminRouter.post('/orders/:id/confirm-driver-pickup', (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  const { driverName } = req.body || {};
+
+  const order = db.queryOne<any>(`SELECT * FROM orders WHERE id = ?`, [id]);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  const now = new Date().toISOString();
+  const rider = driverName || order.rider_name || 'Daily Drop Driver';
+
+  db.run(
+    `UPDATE orders 
+     SET status = 'dispatched', 
+         rider_status = 'picked_up', 
+         driver_confirmed_at = ?, 
+         rider_name = ?,
+         updated_at = ? 
+     WHERE id = ?`,
+    [now, rider, now, id]
+  );
+
+  // Send real-time notification to the restaurant
+  const notifId = crypto.randomUUID();
+  db.run(
+    `INSERT INTO in_app_notifications (id, recipient_user_id, restaurant_id, type, title, message, data, is_read, created_at)
+     VALUES (?, NULL, ?, 'driver_pickup_confirmed', ?, ?, ?, 0, ?)`,
+    [
+      notifId,
+      order.restaurant_id,
+      `Driver Picked Up Order ${order.order_number}`,
+      `Driver ${rider} has confirmed receipt and pickup of order ${order.order_number}. Food handed over successfully!`,
+      JSON.stringify({ orderId: order.id, orderNumber: order.order_number, riderName: rider, pickedUpAt: now }),
+      now,
+    ]
+  );
+
+  AuditService.log({
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    action: 'DRIVER_CONFIRMED_PICKUP',
+    resourceType: 'order',
+    resourceId: id,
+    payload: { rider, orderNumber: order.order_number, pickedUpAt: now },
+  });
+
+  res.json({
+    success: true,
+    message: `Driver receipt confirmed! Restaurant notified of successful handover for ${order.order_number}.`,
+    data: {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      riderName: rider,
+      status: 'dispatched',
+      driverConfirmedAt: now,
+    },
+  });
 });

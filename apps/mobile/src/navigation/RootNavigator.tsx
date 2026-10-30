@@ -65,7 +65,7 @@ function MainTabs({ user, restaurant, unreadCount, onLogout }: TabProps) {
       })}
     >
       <Tab.Screen name="Orders" options={{ tabBarLabel: 'Orders' }}>
-        {(props) => <LiveOrdersScreen {...props} user={user} restaurant={restaurant} />}
+        {(props) => <LiveOrdersScreen {...props} user={user} restaurant={restaurant} onLogout={onLogout} />}
       </Tab.Screen>
 
       <Tab.Screen name="Menu" options={{ tabBarLabel: 'Menu' }}>

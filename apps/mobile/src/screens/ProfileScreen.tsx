@@ -82,6 +82,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
+          try {
+            await mobileApi.logout();
+          } catch (e) {}
           await storage.clearAuth();
           onLogout();
         },

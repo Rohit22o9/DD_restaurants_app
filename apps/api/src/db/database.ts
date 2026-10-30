@@ -45,6 +45,8 @@ class DatabaseService {
         email TEXT UNIQUE NOT NULL,
         phone TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'pending_invitation', 'suspended')),
+        is_online INTEGER NOT NULL DEFAULT 0,
+        last_active_at TEXT,
         address TEXT,
         notes TEXT,
         date_joined TEXT NOT NULL,
@@ -202,6 +204,10 @@ class DatabaseService {
         rider_status TEXT DEFAULT 'assigned',
         rider_eta_mins INTEGER DEFAULT 12,
         dispatch_pin TEXT,
+        delivery_date TEXT,
+        handover_time TEXT,
+        acknowledged_at TEXT,
+        driver_confirmed_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -249,21 +255,33 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_menu_restaurant ON menu_items(restaurant_id);
       CREATE INDEX IF NOT EXISTS idx_payouts_restaurant ON payouts(restaurant_id);
     `);
+
+    // Safe column migrations for existing SQLite databases
+    try { this.db.exec('ALTER TABLE restaurants ADD COLUMN is_online INTEGER DEFAULT 0;'); } catch {}
+    try { this.db.exec('ALTER TABLE restaurants ADD COLUMN last_active_at TEXT;'); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN delivery_date TEXT;'); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN handover_time TEXT;'); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN acknowledged_at TEXT;'); } catch {}
+    try { this.db.exec('ALTER TABLE orders ADD COLUMN driver_confirmed_at TEXT;'); } catch {}
+  }
+
+  private sanitizeParams(params: any[]): any[] {
+    return params.map(p => (p === undefined ? null : p));
   }
 
   public query<T = any>(sql: string, params: any[] = []): T[] {
     const stmt = this.db.prepare(sql);
-    return stmt.all(...params) as T[];
+    return stmt.all(...this.sanitizeParams(params)) as T[];
   }
 
   public queryOne<T = any>(sql: string, params: any[] = []): T | undefined {
     const stmt = this.db.prepare(sql);
-    return stmt.get(...params) as T | undefined;
+    return stmt.get(...this.sanitizeParams(params)) as T | undefined;
   }
 
   public run(sql: string, params: any[] = []): { changes: number; lastInsertRowid: number | bigint } {
     const stmt = this.db.prepare(sql);
-    return stmt.run(...params);
+    return stmt.run(...this.sanitizeParams(params));
   }
 
   public exec(sql: string): void {

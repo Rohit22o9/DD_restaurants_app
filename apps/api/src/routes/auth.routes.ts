@@ -59,6 +59,8 @@ authRouter.post('/login', async (req, res, next) => {
         [user.id]
       );
       if (membership) {
+        const now = new Date().toISOString();
+        db.run(`UPDATE restaurants SET is_online = 1, last_active_at = ? WHERE id = ?`, [now, membership.id]);
         restaurant = {
           id: membership.id,
           name: membership.name,
@@ -286,4 +288,28 @@ authRouter.post('/forgot-password', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// POST /api/v1/auth/logout
+authRouter.post('/logout', authenticate, (req: AuthenticatedRequest, res) => {
+  const now = new Date().toISOString();
+  if (req.user?.role === 'restaurant_partner') {
+    const membership = db.queryOne<any>(
+      `SELECT restaurant_id FROM restaurant_memberships WHERE user_id = ?`,
+      [req.user.id]
+    );
+    if (membership) {
+      db.run(`UPDATE restaurants SET is_online = 0, last_active_at = ? WHERE id = ?`, [now, membership.restaurant_id]);
+    }
+  }
+
+  AuditService.log({
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    action: 'LOGOUT',
+    resourceType: 'user',
+    resourceId: req.user!.id,
+  });
+
+  res.json({ success: true, message: 'Logged out successfully' });
 });
