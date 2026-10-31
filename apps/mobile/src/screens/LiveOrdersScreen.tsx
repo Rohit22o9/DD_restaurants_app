@@ -375,6 +375,14 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
         </View>
       </View>
 
+      {/* Consolidated Batch Drop Banner (Single Delivery Driver for All Orders) */}
+      <View style={styles.consolidatedDropBanner}>
+        <Ionicons name="bicycle" size={14} color="#065F46" />
+        <Text style={styles.consolidatedDropBannerText}>
+          Consolidated Batch Drop • Single Courier Pickups All Orders
+        </Text>
+      </View>
+
       {/* Scrollable Pipeline Status Tabs (Pill Style, Zero Clipping) */}
       <View style={styles.tabsWrapper}>
         <ScrollView
@@ -517,6 +525,7 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
           filteredOrders.map((order) => {
             const isLoadingThis = actionLoading === order.id;
             const isCompleted = order.status === 'dispatched' || order.status === 'delivered';
+            const totalItemQty = order.items?.reduce((sum: number, it: any) => sum + (Number(it.quantity ?? it.qty ?? 1) || 1), 0) || order.items?.length || 0;
 
             return (
               <View key={order.id} style={styles.orderCard}>
@@ -620,9 +629,12 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                         </Text>
                       </View>
                     </View>
-                    <Text style={styles.customerName}>
-                      {order.customerName} • {order.customerPhone || 'Online Prepaid'}
-                    </Text>
+                    <View style={styles.orderBatchMetaRow}>
+                      <Ionicons name="layers-outline" size={13} color="#4B5563" />
+                      <Text style={styles.orderBatchMetaText}>
+                        Consolidated Drop Order • {order.items?.length || 0} Dishes ({totalItemQty} portions)
+                      </Text>
+                    </View>
                   </View>
                 </View>
 
@@ -647,26 +659,26 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
                   })}
                 </View>
 
-                {/* Special Instructions (if any) */}
+                {/* Kitchen Prep Notes */}
                 {order.specialInstructions ? (
                   <View style={styles.instructionsBox}>
                     <Ionicons name="chatbubble-ellipses-outline" size={16} color="#B45309" />
                     <Text style={styles.instructionsText}>
-                      <Text style={{ fontWeight: '700' }}>Customer Note: </Text>
+                      <Text style={{ fontWeight: '700' }}>Kitchen Prep Note: </Text>
                       {order.specialInstructions}
                     </Text>
                   </View>
                 ) : null}
 
-                {/* Rider Dispatch Info */}
+                {/* Single Consolidated Drop Driver */}
                 <View style={styles.riderBar}>
                   <View style={styles.riderLeft}>
                     <View style={styles.riderIconCircle}>
                       <Ionicons name="bicycle" size={16} color={COLORS.forest} />
                     </View>
                     <View>
-                      <Text style={styles.riderLabel}>ASSIGNED RIDER</Text>
-                      <Text style={styles.riderName}>{order.riderName || 'Assigning nearest rider...'}</Text>
+                      <Text style={styles.riderLabel}>DROP DELIVERY DRIVER</Text>
+                      <Text style={styles.riderName}>{order.riderName || 'Daily Drop Courier'}</Text>
                     </View>
                   </View>
 
@@ -832,13 +844,16 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
               </View>
             </View>
 
-            {/* Order Info Row */}
+            {/* Order Info Row (Consolidated Drop, No Customer Details) */}
             <View style={styles.ackOrderInfoRow}>
               <View>
                 <Text style={styles.ackOrderNumber}>{ackModalOrder?.orderNumber}</Text>
-                <Text style={styles.ackCustomerText}>
-                  {ackModalOrder?.customerName} • {ackModalOrder?.customerPhone || 'Online Prepaid'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                  <Ionicons name="fast-food-outline" size={13} color="#4B5563" />
+                  <Text style={styles.ackCustomerText}>
+                    Consolidated Order • {ackModalOrder?.items?.length || 0} Dishes
+                  </Text>
+                </View>
               </View>
               <View style={styles.ackAmountBadge}>
                 <Text style={styles.ackAmountLabel}>BILL TOTAL</Text>
@@ -873,12 +888,12 @@ export const LiveOrdersScreen: React.FC<LiveOrdersScreenProps> = ({
               </ScrollView>
             </View>
 
-            {/* Customer Special Instructions */}
+            {/* Kitchen Prep Instructions */}
             {ackModalOrder?.specialInstructions ? (
               <View style={styles.ackNotesBox}>
                 <Ionicons name="chatbubble-ellipses" size={16} color="#B45309" />
                 <Text style={styles.ackNotesText}>
-                  <Text style={{ fontWeight: '700' }}>Customer Note: </Text>
+                  <Text style={{ fontWeight: '700' }}>Kitchen Prep Note: </Text>
                   {ackModalOrder.specialInstructions}
                 </Text>
               </View>
@@ -1152,6 +1167,25 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  consolidatedDropBanner: {
+    marginHorizontal: 14,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  consolidatedDropBannerText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#065F46',
   },
   tabsWrapper: {
     backgroundColor: COLORS.white,
@@ -1461,6 +1495,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  orderBatchMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  orderBatchMetaText: {
+    fontSize: 11,
+    color: '#4B5563',
+    fontWeight: '600',
   },
   itemsBox: {
     marginTop: 10,

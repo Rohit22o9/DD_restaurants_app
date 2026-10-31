@@ -98,10 +98,13 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   backBtn: {
-    padding: 6,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#EBF1ED',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 10,
-    borderRadius: 8,
-    backgroundColor: COLORS.mintSubtle,
   },
   titleWrap: {
     flex: 1,

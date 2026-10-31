@@ -99,3 +99,4 @@ export function formatPerthDateTime(dateInput?: string | Date | null): string {
     return d.toLocaleString();
   }
 }
+

@@ -20,7 +20,7 @@ interface EarningsScreenProps {
   restaurant?: any;
 }
 
-export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
+export const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [payouts, setPayouts] = useState<any[]>([]);
   const [summary, setSummary] = useState<any | null>(null);
@@ -54,9 +54,19 @@ export const EarningsScreen: React.FC<EarningsScreenProps> = () => {
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
       {/* Top Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Finance & Payouts</Text>
-          <Text style={styles.headerSubtitle}>Weekly Settlements & Platform Reconciliation</Text>
+        <View style={styles.headerLeftRow}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.navigate('Orders')}
+            activeOpacity={0.7}
+            accessibilityLabel="Back to Kitchen Orders"
+          >
+            <Ionicons name="arrow-back" size={22} color={COLORS.forest} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Finance & Payouts</Text>
+            <Text style={styles.headerSubtitle}>Weekly Settlements & Platform Reconciliation</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.refreshIconBtn} onPress={fetchPayouts} activeOpacity={0.7}>
           <Ionicons name="reload" size={18} color={COLORS.forest} />
@@ -212,6 +222,21 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  headerLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#EBF1ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   headerTitle: {
     fontSize: 20,

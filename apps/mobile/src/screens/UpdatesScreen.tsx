@@ -70,6 +70,8 @@ export const UpdatesScreen: React.FC<UpdatesScreenProps> = ({ navigation, route 
       <Header
         title="Kitchen Briefings"
         subtitle="Operational instructions & quota notices"
+        showBack={true}
+        onBack={() => navigation.navigate('Orders')}
         onNotificationPress={() => navigation.navigate('Notifications')}
       />
 

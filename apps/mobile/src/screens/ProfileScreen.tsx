@@ -21,12 +21,14 @@ interface ProfileScreenProps {
   user: any;
   restaurant: any;
   onLogout: () => void;
+  navigation?: any;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   user,
   restaurant,
   onLogout,
+  navigation,
 }) => {
   // Change Password state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -94,7 +96,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   return (
     <View style={styles.container}>
-      <Header title="Kitchen Profile" subtitle="Account credentials & settings" />
+      <Header
+        title="Kitchen Profile"
+        subtitle="Account credentials & settings"
+        showBack={true}
+        onBack={() => navigation?.navigate?.('Orders')}
+      />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Restaurant Card */}

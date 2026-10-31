@@ -23,7 +23,7 @@ interface MenuAvailabilityScreenProps {
   restaurant?: any;
 }
 
-export const MenuAvailabilityScreen: React.FC<MenuAvailabilityScreenProps> = () => {
+export const MenuAvailabilityScreen: React.FC<MenuAvailabilityScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,9 +105,19 @@ export const MenuAvailabilityScreen: React.FC<MenuAvailabilityScreenProps> = () 
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
       {/* Top Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Menu & 86ing</Text>
-          <Text style={styles.headerSubtitle}>Instant Stock & Out-of-Stock Controls</Text>
+        <View style={styles.headerLeftRow}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.navigate('Orders')}
+            activeOpacity={0.7}
+            accessibilityLabel="Back to Kitchen Orders"
+          >
+            <Ionicons name="arrow-back" size={22} color={COLORS.forest} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Menu & 86ing</Text>
+            <Text style={styles.headerSubtitle}>Instant Stock & Out-of-Stock Controls</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.refreshIconBtn} onPress={fetchMenu} activeOpacity={0.7}>
           <Ionicons name="reload" size={18} color={COLORS.forest} />
@@ -277,6 +287,21 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  headerLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#EBF1ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
   },
   headerTitle: {
     fontSize: 20,
